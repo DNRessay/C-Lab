@@ -174,6 +174,9 @@ def admin(event):
         if event.get("action") == "refresh_blog":
             from .invest import blog
 
+            if event.get("retry_tickers"):
+                db.query(blog.BlogSymbol).filter(blog.BlogSymbol.symbol == "").delete()
+                db.commit()
             if event.get("reread_empty"):
                 db.query(blog.BlogPost).filter(blog.BlogPost.items == 0, blog.BlogPost.kind != "news").delete()
                 db.commit()

@@ -85,11 +85,16 @@ def symbol_key(account, instrument):
     return (account + "|" + norm(re.sub(r"\(.*?\)", " ", instrument)))[:220]
 
 
-def resolve_symbols(db: Session, days=150, limit=40):
+def resolve_symbols(db: Session, days=150, limit=80):
     """Look up tickers for recent blog companies (not preference shares), then refresh their prices."""
     from . import prices
 
     since = utcnow().date() - timedelta(days=days)
+    week_ago = utcnow() - timedelta(days=7)
+    stale = db.scalars(select(BlogSymbol).where(BlogSymbol.symbol == "", BlogSymbol.checked_at < week_ago)).all()
+    for row in stale:  # nothing found last time: try again (names and Yahoo's index change)
+        db.delete(row)
+    db.commit()
     known = {k: sym for k, sym in db.execute(select(BlogSymbol.key, BlogSymbol.symbol))}
     looked = 0
     for account, instrument in db.execute(select(BlogDividend.account, BlogDividend.instrument).distinct()
@@ -466,19 +471,45 @@ def view(db: Session, holdings, watch, days_back=45):
             "upcoming": out}
 
 
-def search_symbol(name: str, account: str = "ZAR"):
-    """Yahoo's search: best ticker for a name, preferring the JSE for ZAR-account shares."""
+def _yahoo_search(q):
     try:
         r = http.get("https://query2.finance.yahoo.com/v1/finance/search", headers=HEADERS, timeout=15,
-                     params={"q": re.sub(r"\s+", " ", name)[:60], "quotesCount": 8, "newsCount": 0}, **HTTP_KW)
-        quotes = [q for q in r.json().get("quotes", []) if q.get("symbol")]
+                     params={"q": q[:60], "quotesCount": 10, "newsCount": 0}, **HTTP_KW)
+        return [x for x in r.json().get("quotes", []) if x.get("symbol")]
     except Exception:
-        return None
-    if account == "ZAR":
-        jse = [q for q in quotes if q["symbol"].endswith(".JO")]
-        quotes = jse or quotes
-    elif account in ("USD", "AUD", "GBP", "EUR"):
-        suffix = {"USD": "", "AUD": ".AX", "GBP": ".L", "EUR": ""}[account]
-        pref = [q for q in quotes if (q["symbol"].endswith(suffix) if suffix else "." not in q["symbol"])]
-        quotes = pref or quotes
-    return quotes[0]["symbol"] if quotes else None
+        return []
+
+
+def name_variants(name: str):
+    """'Northam Holdings Limited' -> itself, 'Northam Holdings', 'Northam'; fixes 'Gold Field' -> 'Gold Fields'."""
+    base = re.sub(r"\s+", " ", re.sub(r"\(.*?\)", " ", name)).strip()
+    base = re.sub(r"\bGold Field\b", "Gold Fields", base)
+    short = re.sub(r"\b(limited|ltd|plc|inc|incorporated|corporation|corp|n\.?v\.?|s\.?a\.?|se|ag)\b\.?", " ", base, flags=re.I)
+    short = re.sub(r"\s+", " ", short).strip(" ,")
+    out = [base, short]
+    words = short.split()
+    if len(words) > 2:
+        out.append(" ".join(words[:2]))
+    if len(words) > 1 and len(words[0]) > 3:
+        out.append(words[0])
+    return list(dict.fromkeys(v for v in out if v))
+
+
+def search_symbol(name: str, account: str = "ZAR"):
+    """Yahoo's search: best ticker for a name, preferring the JSE for ZAR-account shares (tries shorter names too)."""
+    fallback = None
+    for q in name_variants(name):
+        quotes = _yahoo_search(q)
+        if not quotes:
+            continue
+        if account == "ZAR":
+            jse = [x for x in quotes if x["symbol"].endswith(".JO")]
+            if jse:
+                return jse[0]["symbol"]
+        elif account in ("USD", "AUD", "GBP", "EUR"):
+            suffix = {"USD": "", "AUD": ".AX", "GBP": ".L", "EUR": ""}[account]
+            pref = [x for x in quotes if (x["symbol"].endswith(suffix) if suffix else "." not in x["symbol"])]
+            if pref:
+                return pref[0]["symbol"]
+        fallback = fallback or quotes[0]["symbol"]
+    return fallback

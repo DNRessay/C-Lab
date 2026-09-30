@@ -120,3 +120,13 @@ def test_parse_real_layout():
     assert m("Growthpoint Properties Limited") == ("watch", "GRT.JO")
     assert m("Grindrod Limited") is None
     assert m("Standard Bank Group Limited (second preference share (SBPP))") is None
+
+
+def test_name_variants_and_search(monkeypatch):
+    assert blog.name_variants("Northam Holdings Limited") == ["Northam Holdings Limited", "Northam Holdings", "Northam"]
+    assert blog.name_variants("Gold Field Limited")[1] == "Gold Fields"
+    seen = []
+    results = {"Spur": [{"symbol": "SUR.JO"}], "Spur Corporation Limited": [{"symbol": "SPUR"}]}
+    monkeypatch.setattr(blog, "_yahoo_search", lambda q: seen.append(q) or results.get(q, []))
+    assert blog.search_symbol("Spur Corporation Limited") == "SUR.JO"  # a US hit first, the JSE one on the shorter name
+    assert blog.search_symbol("Nothing Here Limited") is None
