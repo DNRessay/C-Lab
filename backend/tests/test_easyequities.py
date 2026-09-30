@@ -478,3 +478,45 @@ def test_sign_in_with_google(market, monkeypatch):
     assert "google=error" in bad.headers["location"]
     denied = api.get(f"/api/ee/google/callback?error=access_denied&state={state}", follow_redirects=False)
     assert "google=error" in denied.headers["location"] and "cancelled" in denied.headers["location"]
+
+
+SAMPLE_STATEMENT = """EasyEquities ZAR                 Monthly Statement            August 2025
+Date          Description                                          Amount        Balance
+2025-08-04    Dividend Sirius Real Estate @ 5.9 cents               0.00314      12.34567
+05/08/2025    Monthly custody fee                                  (1.15)         11.19567
+12 Aug 2025   VAT on custody fee                                   -0.17          11.02567
+2025-08-20    EFT Deposit                                        1 676.00      1 687.02567
+Closing balance                                                                1 687.02567
+"""
+
+
+def test_statement_line_parser():
+    from app.invest.ee import reader
+
+    rows = reader.parse_lines(SAMPLE_STATEMENT)
+    assert [(r["date"].isoformat(), r["amount"], r["balance"]) for r in rows] == [
+        ("2025-08-04", 0.00314, 12.34567), ("2025-08-05", -1.15, 11.19567),
+        ("2025-08-12", -0.17, 11.02567), ("2025-08-20", 1676.0, 1687.02567)]
+    assert rows[0]["description"] == "Dividend Sirius Real Estate @ 5.9 cents"  # numbers inside text stay text
+    assert all(set(line) <= set("a9 -/.,():@%") for line in reader.shape(SAMPLE_STATEMENT))  # layout only
+
+
+def test_statement_reader_saves_cents(market, monkeypatch):
+    from app.invest.ee import reader
+
+    monkeypatch.setattr(reader, "pdf_text", lambda data: (SAMPLE_STATEMENT, 1))
+    h = register("eeuser")
+    api.put("/api/ee/platform", headers=h, json={"username": "me", "password": "secret"})
+    r = api.post("/api/ee/statements/read", headers=h).json()
+    assert (r["read_now"], r["left"], r["total"], r["done"]) == (2, 0, 2, 2)
+    assert r["lines_now"] == 8 and r["lines"] == 8  # 4 lines x 2 statements
+    assert api.post("/api/ee/statements/read", headers=h).json()["read_now"] == 0  # nothing twice
+
+    t = api.get("/api/ee/transactions", headers=h).json()
+    tiny = next(x for x in t["rows"] if x["comment"].startswith("Dividend Sirius"))
+    assert tiny["amount"] == 0.00314 and tiny["category"] == "dividend" and tiny["source"] == "pdf"
+    assert t["reader"]["done"] == 2
+
+    doc = api.get("/api/ee/statements/0/text", headers=h).json()
+    assert "Monthly custody fee" in doc["text"] and doc["lines"][1]["amount"] == -1.15
+    assert api.post("/api/ee/statements/reparse", headers=h).json() == {"statements": 2, "lines": 8}

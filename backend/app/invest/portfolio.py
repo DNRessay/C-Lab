@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from . import prices
 from .ee.models import EEConnection
-from .ee.sync import platform_transactions, platform_view, rand_rate
+from .ee.sync import platform_view, rand_rate, statement_rows
 from .models import InvestTxn, ManualPrice, PortfolioSnapshot, PropertyAsset
 
 ZERO = Decimal(0)
@@ -142,7 +142,7 @@ def summary(db: Session, user_id: int):
 
     flows = contributions(txns)
     has_deposits = any(t.kind == "deposit" for t in txns)
-    statement = platform_transactions(conn) if ee_view else []
+    statement = statement_rows(db, conn) if ee_view else []
     income = statement_income(db, statement)
     if not has_deposits:
         # EasyEquities' statement has every deposit and withdrawal: use it as the money-in history.
@@ -294,7 +294,7 @@ def monthly(db: Session, user_id: int):
     """Per-month money in/out, buys/sells and income/costs, for the charts. All in rand."""
     txns = list(db.scalars(select(InvestTxn).where(InvestTxn.user_id == user_id)))
     conn = db.scalar(select(EEConnection).where(EEConnection.user_id == user_id))
-    statement = platform_transactions(conn) if conn and conn.snapshot else []
+    statement = statement_rows(db, conn) if conn and conn.snapshot else []
     series = defaultdict(lambda: defaultdict(float))
 
     has_deposits = any(t.kind == "deposit" for t in txns)

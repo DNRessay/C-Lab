@@ -67,3 +67,41 @@ class EEMail(Base):
     txn_id: Mapped[Optional[int]] = mapped_column(BigId, ForeignKey("invest_transactions.id", ondelete="SET NULL"),
                                                   nullable=True)
     created_at: Mapped[datetime] = created()
+
+
+class EEStatementDoc(Base):
+    """A printable EasyEquities statement, read once: its text is kept so the line parser can be re-run later."""
+
+    __tablename__ = "ee_statement_docs"
+    __table_args__ = (UniqueConstraint("user_id", "name"),)
+    id: Mapped[int] = pk()
+    user_id: Mapped[int] = user_fk()
+    name: Mapped[str] = text(300)
+    account: Mapped[str] = text(80)
+    account_number: Mapped[str] = text(40)
+    kind: Mapped[str] = text(20)  # monthly | tax | other
+    period: Mapped[str] = text(10)
+    pages: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    body: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    status: Mapped[str] = text(20)  # ok | error
+    error: Mapped[str] = text()
+    lines_found: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    read_at: Mapped[datetime] = created()
+
+
+class EEStatementLine(Base):
+    """One money line from a statement PDF, to the cent (or smaller)."""
+
+    __tablename__ = "ee_statement_lines"
+    id: Mapped[int] = pk()
+    user_id: Mapped[int] = user_fk()
+    doc_id: Mapped[int] = mapped_column(BigId, ForeignKey("ee_statement_docs.id", ondelete="CASCADE"), nullable=False,
+                                        index=True)
+    line_no: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    account: Mapped[str] = text(80)
+    currency: Mapped[str] = text(3)
+    date: Mapped[Optional[dt.date]] = mapped_column(nullable=True, index=True)
+    description: Mapped[str] = text(400)
+    amount: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    balance: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    category: Mapped[str] = text(20)

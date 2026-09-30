@@ -317,12 +317,35 @@ def reparse(db: Session, user_id: int):
     return {"emails": len(rows), "parsed": sum(1 for r in rows if r.parsed), "imported": imported}
 
 
+def statement_rows(db: Session, conn: EEConnection):
+    """Statement lines for charts and totals: the PDF statements (exact, full history) where read, plus the website's
+    recent lines for anything newer than the last PDF of that account."""
+    from .reader import lines_as_statement_rows
+
+    web = platform_transactions(conn)
+    pdf = lines_as_statement_rows(db, conn.user_id) if conn else []
+    if not pdf:
+        return web
+    last = {}
+    for r in pdf:
+        last[r["account"]] = max(last.get(r["account"], ""), r["date"] or "")
+    newer = [r for r in web if r["account"] not in last or (r["date"] or "") > last[r["account"]]]
+    return sorted(pdf + newer, key=lambda r: r["date"] or "", reverse=True)
+
+
 def sync_all(db: Session):
     """Nightly: every connected user."""
+    from . import reader
+
     done = 0
     for conn in db.scalars(select(EEConnection)):
         if conn.username and conn.password:
-            sync_platform(db, conn)
+            if sync_platform(db, conn):
+                try:
+                    reader.read_batch(db, conn)
+                except Exception:
+                    db.rollback()
+                    log.exception("Statement reader failed for user %s", conn.user_id)
         if conn.mail_address and conn.mail_password:
             sync_mail(db, conn)
         done += 1

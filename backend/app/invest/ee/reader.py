@@ -1,0 +1,182 @@
+# Statement reader: downloads EasyEquities' printable statements (PDF) a batch at a time, keeps their text, and saves
+# every money line to the database to the cent. The text stays, so a better parser can be re-run without downloading.
+import io
+import logging
+import re
+from datetime import date
+
+from sqlalchemy import delete, select
+from sqlalchemy.orm import Session
+
+from ...security import unseal
+from . import mail, platform
+from .models import EEConnection, EEMail, EEStatementDoc, EEStatementLine
+
+log = logging.getLogger(__name__)
+BATCH = 25
+
+MONTHS = {m: i for i, m in enumerate(("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"), 1)}
+DATE_RES = [
+    (re.compile(r"^(\d{4})[-/](\d{2})[-/](\d{2})\b"), lambda m: date(int(m[1]), int(m[2]), int(m[3]))),
+    (re.compile(r"^(\d{1,2})[-/](\d{1,2})[-/](\d{4})\b"), lambda m: date(int(m[3]), int(m[2]), int(m[1]))),
+    (re.compile(r"^(\d{1,2})[ -]([A-Za-z]{3})[a-z]*[ -](\d{4})\b"), lambda m: date(int(m[3]), MONTHS[m[2].lower()], int(m[1]))),
+]
+# A money value: optional sign/brackets/currency, thousands separated by space or comma, any number of decimals.
+AMOUNT = re.compile(r"\(?-?\s?(?:R|\$|£|€|ZAR|USD|GBP)?\s?-?\d{1,3}(?:[ ,]\d{3})*(?:\.\d+)?\)?|\(?-?\d+\.\d+\)?")
+
+
+def pdf_text(data: bytes):
+    """(text, pages). Uses pypdf's layout mode so table columns stay on one line."""
+    from pypdf import PdfReader
+
+    reader = PdfReader(io.BytesIO(data))
+    pages = []
+    for page in reader.pages:
+        try:
+            pages.append(page.extract_text(extraction_mode="layout") or "")
+        except Exception:
+            pages.append(page.extract_text() or "")
+    return "\n".join(pages), len(reader.pages)
+
+
+def _to_float(token: str):
+    t = token.strip()
+    neg = t.startswith("(") and t.endswith(")") or "-" in t
+    digits = re.sub(r"[^\d.]", "", t)
+    if not digits or digits == ".":
+        return None
+    try:
+        v = float(digits)
+    except ValueError:
+        return None
+    return -v if neg else v
+
+
+def _date(line: str):
+    for rx, make in DATE_RES:
+        m = rx.match(line)
+        if m:
+            try:
+                return make(m), line[m.end():]
+            except (ValueError, KeyError):
+                return None, line
+    return None, line
+
+
+def parse_lines(body: str):
+    """Rows of (date, description, amount, balance) from statement text. Lines without a leading date are skipped."""
+    out = []
+    for n, raw in enumerate(body.splitlines()):
+        line = raw.strip()
+        d, rest = _date(line)
+        if not d:
+            continue
+        tokens = [(m.start(), m.group(0)) for m in AMOUNT.finditer(rest) if re.search(r"\d", m.group(0))]
+        # Only numbers at the end of the line are money columns (the description can contain numbers, e.g. "@15%").
+        tail, cursor = [], len(rest)
+        for start, tok in reversed(tokens):
+            gap = rest[start + len(tok):cursor]
+            if gap.strip():
+                break
+            tail.insert(0, tok)
+            cursor = start
+        values = [v for v in (_to_float(t) for t in tail) if v is not None]
+        if not values:
+            continue
+        desc = re.sub(r"\s{2,}", " ", rest[:cursor]).strip(" -|")
+        amount, balance = (values[-2], values[-1]) if len(values) >= 2 else (values[0], None)
+        out.append({"line_no": n, "date": d, "description": desc[:400], "amount": amount, "balance": balance})
+    return out
+
+
+def shape(body: str, max_lines=40):
+    """The statement's layout with every letter as 'a' and digit as '9': shows the format, not the contents."""
+    lines = [re.sub(r"[A-Za-z]", "a", re.sub(r"\d", "9", ln.rstrip())) for ln in body.splitlines() if ln.strip()]
+    return lines[:max_lines]
+
+
+def accounts_by_number(db: Session, user_id: int):
+    return dict(db.execute(select(EEMail.account_number, EEMail.account).where(
+        EEMail.user_id == user_id, EEMail.account_number != "", EEMail.account != "")).all())
+
+
+def save_doc(db: Session, conn: EEConnection, item: dict, info: dict, body: str, pages: int, error: str = ""):
+    from .sync import categorise
+
+    doc = db.scalar(select(EEStatementDoc).where(EEStatementDoc.user_id == conn.user_id, EEStatementDoc.name == item["name"]))
+    if not doc:
+        doc = EEStatementDoc(user_id=conn.user_id, name=item["name"][:300])
+        db.add(doc)
+    doc.account, doc.account_number, doc.kind, doc.period = info["account"][:80], info["account_number"], info["kind"], info["period"]
+    doc.body, doc.pages, doc.status, doc.error = body, pages, "error" if error else "ok", error[:500]
+    db.flush()
+    rows = parse_lines(body) if body else []
+    db.execute(delete(EEStatementLine).where(EEStatementLine.doc_id == doc.id))
+    currency = mail.account_currency(doc.account)
+    for r in rows:
+        db.add(EEStatementLine(user_id=conn.user_id, doc_id=doc.id, account=doc.account[:80], currency=currency,
+                               category=categorise("", r["description"]), **r))
+    doc.lines_found = len(rows)
+    return doc
+
+
+def read_batch(db: Session, conn: EEConnection, limit=BATCH, client=None):
+    """Read up to `limit` statements not read yet (newest first). Returns counts."""
+    from .router import statement_info
+
+    items = (conn.snapshot or {}).get("statements") or []
+    done = set(db.scalars(select(EEStatementDoc.name).where(EEStatementDoc.user_id == conn.user_id,
+                                                             EEStatementDoc.status == "ok")))
+    accounts = accounts_by_number(db, conn.user_id)
+    todo = [(it, statement_info(it["name"], accounts)) for it in items if it["name"] not in done]
+    todo = sorted(todo, key=lambda x: x[1]["period"], reverse=True)[:limit]  # newest first
+    if not todo:
+        return {"read_now": 0, "left": 0, "lines_now": 0}
+    p = client or platform.Platform()
+    p.login(conn.username, unseal(conn.password))
+    read = lines = 0
+    for it, info in todo:
+        try:
+            body, pages = pdf_text(p.download(it["url"]))
+            doc = save_doc(db, conn, it, info, body, pages)
+            if read == 0:  # the format only, to tune the parser without exposing the contents
+                log.info("Statement layout (%s, %s): %s", info["kind"], info["period"], shape(body))
+        except Exception as e:
+            doc = save_doc(db, conn, it, info, "", 0, error=str(e))
+            log.warning("Statement %s failed: %s", it["name"][:60], e)
+        db.commit()
+        read += 1
+        lines += doc.lines_found
+    left = len([1 for it in items if it["name"] not in done]) - read
+    log.info("Statement reader: %d read, %d lines, %d left", read, lines, left)
+    return {"read_now": read, "left": max(left, 0), "lines_now": lines}
+
+
+def reparse(db: Session, user_id: int):
+    """Re-run the (improved) parser over every stored statement text."""
+    conn = db.scalar(select(EEConnection).where(EEConnection.user_id == user_id))
+    docs = list(db.scalars(select(EEStatementDoc).where(EEStatementDoc.user_id == user_id, EEStatementDoc.status == "ok")))
+    total = 0
+    for doc in docs:
+        info = {"account": doc.account, "account_number": doc.account_number, "kind": doc.kind, "period": doc.period}
+        total += save_doc(db, conn, {"name": doc.name}, info, doc.body, doc.pages).lines_found
+    db.commit()
+    return {"statements": len(docs), "lines": total}
+
+
+def lines_as_statement_rows(db: Session, user_id: int):
+    """Statement lines in the same shape as sync.platform_transactions (so charts and totals can use either)."""
+    rows = db.scalars(select(EEStatementLine).where(EEStatementLine.user_id == user_id)
+                      .order_by(EEStatementLine.date.desc(), EEStatementLine.line_no))
+    return [{"account": r.account, "currency": r.currency, "date": r.date.isoformat() if r.date else "",
+             "action": "", "comment": r.description, "amount": r.amount, "contract_code": "", "id": f"pdf-{r.id}",
+             "category": r.category, "balance": r.balance, "source": "pdf"} for r in rows]
+
+
+def status(db: Session, user_id: int, conn: EEConnection = None):
+    docs = list(db.scalars(select(EEStatementDoc).where(EEStatementDoc.user_id == user_id)))
+    total = len(((conn.snapshot or {}).get("statements") or [])) if conn else 0
+    return {"total": total, "done": sum(1 for d in docs if d.status == "ok"),
+            "failed": sum(1 for d in docs if d.status == "error"), "lines": sum(d.lines_found for d in docs),
+            "last_read": max((d.read_at for d in docs), default=None)}
+

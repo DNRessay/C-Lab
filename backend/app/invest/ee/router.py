@@ -13,7 +13,7 @@ from ...deps import current_user, get_db
 from ...models import User
 from ...config import settings
 from ...security import make_token, read_token, seal, unseal
-from . import gmail, mail, platform
+from . import gmail, mail, platform, reader
 from . import sync
 from .models import EEConnection, EEMail
 
@@ -186,8 +186,10 @@ def sync_now(user: User = Depends(current_user), db: Session = Depends(get_db)):
 
 @router.get("/transactions")
 def platform_transactions(user: User = Depends(current_user), db: Session = Depends(get_db)):
-    rows = sync.platform_transactions(connection(db, user))
-    return {"rows": rows, "totals": sync.statement_totals(rows), **sync.statement_breakdown(db, rows)}
+    conn = connection(db, user)
+    rows = sync.statement_rows(db, conn) if conn else []
+    return {"rows": rows, "totals": sync.statement_totals(rows), **sync.statement_breakdown(db, rows),
+            "reader": reader.status(db, user.id, conn)}
 
 
 MONTHS = {m: i for i, m in enumerate(("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"), 1)}
@@ -221,8 +223,54 @@ def statements(user: User = Depends(current_user), db: Session = Depends(get_db)
     # EasyEquities account numbers -> names, learnt from the emails (EE1720926-7814224 = EasyEquities ZAR).
     accounts = dict(db.execute(select(EEMail.account_number, EEMail.account).where(
         EEMail.user_id == user.id, EEMail.account_number != "", EEMail.account != "")).all())
-    out = [{"id": i, "name": x["name"], **statement_info(x["name"], accounts)} for i, x in enumerate(items)]
+    from .models import EEStatementDoc
+
+    docs = {d.name: d for d in db.scalars(select(EEStatementDoc).where(EEStatementDoc.user_id == user.id))}
+    out = [{"id": i, "name": x["name"], **statement_info(x["name"], accounts),
+            "read": x["name"] in docs and docs[x["name"]].status == "ok",
+            "lines": docs[x["name"]].lines_found if x["name"] in docs else 0} for i, x in enumerate(items)]
     return sorted(out, key=lambda r: (r["account"], r["kind"], r["period"]), reverse=False)
+
+
+@router.get("/statements/reader")
+def reader_status(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    return reader.status(db, user.id, connection(db, user))
+
+
+@router.post("/statements/read")
+def read_statements(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Read the next batch of statement PDFs into the database."""
+    conn = connection(db, user)
+    if not conn or not conn.username:
+        raise HTTPException(400, "Connect EasyEquities first.")
+    try:
+        result = reader.read_batch(db, conn)
+    except platform.PlatformError as e:
+        raise HTTPException(502, f"EasyEquities: {e}")
+    return {**result, **reader.status(db, user.id, conn)}
+
+
+@router.post("/statements/reparse")
+def reparse_statements(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    return reader.reparse(db, user.id)
+
+
+@router.get("/statements/{idx}/text")
+def statement_text(idx: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """What C-Lab read from a statement: its text and the money lines found in it."""
+    from .models import EEStatementDoc, EEStatementLine
+
+    conn = connection(db, user)
+    items = ((conn.snapshot or {}).get("statements") or []) if conn else []
+    if not 0 <= idx < len(items):
+        raise HTTPException(404, "Statement not found.")
+    doc = db.scalar(select(EEStatementDoc).where(EEStatementDoc.user_id == user.id, EEStatementDoc.name == items[idx]["name"]))
+    if not doc:
+        raise HTTPException(404, "Not read yet. Press Read statements.")
+    lines = db.scalars(select(EEStatementLine).where(EEStatementLine.doc_id == doc.id).order_by(EEStatementLine.line_no))
+    return {"name": doc.name, "status": doc.status, "error": doc.error, "pages": doc.pages, "text": doc.body,
+            "lines": [{"date": x.date.isoformat() if x.date else None, "description": x.description, "amount": x.amount,
+                       "balance": x.balance, "category": x.category} for x in lines]}
 
 
 @router.get("/statements/{idx}")

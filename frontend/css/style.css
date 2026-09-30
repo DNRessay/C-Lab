@@ -354,3 +354,13 @@ details.group-card h4 { margin: 0.6rem 0 0.4rem; font-size: 0.85rem; color: var(
   .pie-box { width: 150px; height: 150px; margin: 0 auto; }
   .docs { grid-template-columns: 1fr; }
 }
+
+.reader-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.75rem 0.9rem;
+  margin-bottom: 0.75rem; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; }
+.modal { position: fixed; inset: 0; z-index: 50; background: rgba(0, 0, 0, 0.7); display: flex; align-items: flex-start;
+  justify-content: center; padding: 2rem 1rem; overflow-y: auto; }
+.modal-card { width: min(900px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 1rem;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6); }
+.modal-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 0.5rem; word-break: break-word; }
+.modal pre { white-space: pre-wrap; word-break: break-word; font-size: 0.78rem; color: var(--muted); max-height: 50vh; overflow: auto;
+  background: var(--input); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; }

@@ -118,6 +118,8 @@ export const api = {
   eeReparse: () => post("/api/ee/reparse"),
   eeTransactions: () => get("/api/ee/transactions"),
   eeStatements: () => get("/api/ee/statements"),
+  eeReadStatements: () => post("/api/ee/statements/read"),
+  eeStatementText: (id) => get(`/api/ee/statements/${id}/text`),
   eeStatementPdf: (id, inline = false) => request(`/api/ee/statements/${id}${inline ? "?inline=true" : ""}`, { raw: true }),
   eeMails: (kind = "") => get(`/api/ee/mails${qs({ kind })}`),
   eeMail: (id) => get(`/api/ee/mails/${id}`),

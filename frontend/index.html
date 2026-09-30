@@ -162,7 +162,11 @@
 
       <details class="section" id="pdf-wrap" hidden>
         <summary><span>Printable statements</span><span class="count" id="cnt-pdf"></span></summary>
-        <p class="muted">Grouped by account. <strong>View</strong> opens the PDF in your browser; nothing is stored in C-Lab.</p>
+        <div class="reader-bar">
+          <div><strong>Statement reader</strong><br><small class="muted" id="reader-note"></small></div>
+          <button id="read-stmts" class="small">Read statements</button>
+        </div>
+        <p class="muted">Grouped by account. <strong>View</strong> opens the PDF; <strong>Text</strong> shows what C-Lab read from it, line by line to the cent.</p>
         <div id="pdf-groups"></div>
       </details>
 
@@ -805,14 +809,45 @@
         return `<details class="group-card"><summary><span>${esc(acc)}</span><span class="count">${n}</span></summary>
           ${Object.entries(kinds).map(([k, list]) => `<h4>${KINDS[k] || esc(k)}</h4><div class="docs">
             ${list.sort((a, b) => (b.period || "").localeCompare(a.period || "")).map(r => `<div class="doc" data-search="${esc(r.name)}">
-              <div class="doc-main"><strong>${esc(periodLabel(r.period) || "Statement")}</strong><small class="muted" title="${esc(r.name)}">${esc(r.name)}</small></div>
-              <div class="row"><button class="secondary small pdf-view" data-id="${r.id}" data-name="${esc(r.name)}">View</button>
+              <div class="doc-main"><strong>${esc(periodLabel(r.period) || "Statement")} ${r.read ? badge(`read · ${r.lines}`, "ok") : ""}</strong><small class="muted" title="${esc(r.name)}">${esc(r.name)}</small></div>
+              <div class="row">${r.read ? `<button class="secondary small pdf-text" data-id="${r.id}" title="${r.lines} money lines">Text</button>` : ""}
+                <button class="secondary small pdf-view" data-id="${r.id}" data-name="${esc(r.name)}">View</button>
                 <button class="secondary small pdf-dl" data-id="${r.id}" data-name="${esc(r.name)}">Download</button></div></div>`).join("")}
           </div>`).join("")}</details>`;
       }).join("");
       $$("#pdf-groups .pdf-view").forEach(b => b.onclick = () => openPdf(b.dataset.id, b.dataset.name, true));
       $$("#pdf-groups .pdf-dl").forEach(b => b.onclick = () => openPdf(b.dataset.id, b.dataset.name, false));
+      $$("#pdf-groups .pdf-text").forEach(b => b.onclick = () => showStatementText(b.dataset.id));
+      const read = rows.filter(r => r.read).length;
+      $("#reader-note").textContent = `${read} of ${rows.length} statements read into C-Lab` +
+        (read < rows.length ? ". The nightly sync reads 25 more each night, or press Read statements." : ". All read.");
+      $("#read-stmts").hidden = read >= rows.length;
       applySearch();
+    }
+
+    action($("#read-stmts"), async () => {
+      flash("Reading statements from EasyEquities… about a minute for 25.", "warn");
+      const r = await api.eeReadStatements();
+      flash(`Read ${r.read_now} statement(s), ${r.lines_now} money lines. ${r.left ? r.left + " left." : "All done."}`);
+      loadStatement();
+    });
+    async function showStatementText(id) {
+      const d = await api.eeStatementText(id);
+      const box = document.createElement("div");
+      box.className = "modal";
+      box.innerHTML = `<div class="modal-card" role="dialog" aria-label="${esc(d.name)}">
+        <div class="modal-head"><strong>${esc(d.name)}</strong><button class="secondary small modal-x" aria-label="Close">Close</button></div>
+        <h3>Money lines found (${d.lines.length})</h3>
+        <div class="table-wrap"><table><thead><tr><th>Date</th><th>Description</th><th class="num">Amount</th><th class="num">Balance</th></tr></thead>
+        <tbody>${d.lines.map(l => `<tr><td>${esc(l.date || "")}</td><td>${esc(l.description)} ${badge((CAT[l.category] || [l.category])[0], (CAT[l.category] || [])[1] || "")}</td>
+          <td class="num ${l.amount < 0 ? "neg" : ""}">${l.amount != null ? (l.amount < 0 ? "-" : "") + amount(l.amount) : ""}</td>
+          <td class="num">${l.balance != null ? (l.balance < 0 ? "-" : "") + amount(l.balance) : ""}</td></tr>`).join("")
+          || empty(4, "No money lines recognised in this statement yet.")}</tbody></table></div>
+        <details><summary>Full text as read</summary><pre>${esc(d.text)}</pre></details></div>`;
+      document.body.appendChild(box);
+      const close = () => box.remove();
+      box.addEventListener("click", (e) => { if (e.target === box || e.target.closest(".modal-x")) close(); });
+      document.addEventListener("keydown", function esc_(e) { if (e.key === "Escape") { close(); document.removeEventListener("keydown", esc_); } });
     }
 
     // Statement charts: costs by type and income by account (pies), earned vs paid per account (bars).
