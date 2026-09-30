@@ -185,6 +185,7 @@ def summary(db: Session, user_id: int):
     history = record_snapshot(db, user_id, portfolio_value, invested, net_worth) if (rows or props or txns) else []
     return {
         "history": history,
+        "statement_history": statement_history(db, user_id) if conn else [],
         "holdings": rows,
         "cash": _f(cash),
         "invested": invested,
@@ -206,6 +207,25 @@ def summary(db: Session, user_id: int):
                                       for a in ee_view["accounts"]]}
         if ee_view else None,
     }
+
+
+def statement_history(db: Session, user_id: int):
+    """Month-end worth (sum of every account's closing value) and money put in, from the monthly statements."""
+    from .ee.reader import month_series
+
+    by_month, rates = defaultdict(lambda: {"value": 0.0, "net_in": 0.0, "opening": 0.0}), {}
+    for (account, currency, month), kinds in month_series(db, user_id).items():
+        rate = rates.setdefault(currency, rand_rate(db, currency) or 0.0)
+        cell = by_month[month]
+        cell["value"] += (kinds.get("closing") or 0.0) * rate
+        cell["opening"] += (kinds.get("opening") or 0.0) * rate
+        cell["net_in"] += (abs(kinds.get("money_in", 0.0)) - abs(kinds.get("money_out", 0.0))) * rate
+    out, invested = [], None
+    for month in sorted(by_month):
+        cell = by_month[month]
+        invested = (cell["opening"] if invested is None else invested) + cell["net_in"]
+        out.append({"month": month, "value": round(cell["value"], 2), "invested": round(invested, 2)})
+    return out
 
 
 def record_snapshot(db: Session, user_id: int, value, invested, net_worth):
@@ -329,6 +349,20 @@ def monthly(db: Session, user_id: int):
             series["costs"][m] += v
         elif r["category"] in ("deposit", "withdrawal") and not has_deposits and r["currency"] == "ZAR":
             series["money_in" if r["category"] == "deposit" else "money_out"][m] += v
+
+    # Months covered by the monthly statements use the statement's own figures (whole history, all accounts).
+    from .ee.reader import month_series
+
+    stmt = defaultdict(lambda: defaultdict(float))
+    for (account, currency, month), kinds in month_series(db, user_id).items():
+        rate = rates.setdefault(currency, rand_rate(db, currency) or 0.0)
+        for kind in ("money_in", "money_out", "income", "costs"):
+            if kind in kinds:
+                stmt[kind][month] += abs(kinds[kind]) * rate
+    covered = {m for s in stmt.values() for m in s}
+    for kind in ("money_in", "money_out", "income", "costs"):
+        for m in covered:
+            series[kind][m] = stmt[kind].get(m, 0.0)
 
     used = sorted({m for s in series.values() for m, v in s.items() if m and v})
     if not used:

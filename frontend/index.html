@@ -634,13 +634,18 @@
       bodyColor: css("--text"), padding: 10, callbacks: { label: (c) => ` ${c.dataset.label}: ${money(c.parsed.y ?? c.parsed.x)}` } };
 
     function renderCharts(s) {
-      const h = s.history || [];
+      // Month-ends from the statements, then C-Lab's own daily points after the last statement.
+      const monthly = (s.statement_history || []).map(p => ({ date: p.month, value: p.value, invested: p.invested }));
+      const lastMonth = monthly.length ? monthly[monthly.length - 1].date : "";
+      const h = [...monthly, ...(s.history || []).filter(p => p.date.slice(0, 7) > lastMonth)];
       $("#worth-note").textContent = h.length < 2
         ? "C-Lab saves your numbers once a day, so this line grows from today."
-        : `Since ${h[0].date}. Hover or tap for the numbers on a day.`;
+        : monthly.length
+          ? `Month-ends from ${monthly.length} EasyEquities statements, then daily. Tap for the numbers.`
+          : `Since ${h[0].date}. Hover or tap for the numbers on a day.`;
       chart("#worth-chart", {
         type: "line",
-        data: { labels: h.map(p => p.date), datasets: [
+        data: { labels: h.map(p => p.date.length === 7 ? monthLabel(p.date) : p.date), datasets: [
           { label: "Portfolio worth", data: h.map(p => p.value), borderColor: css("--series-1"), backgroundColor: css("--series-1"),
             borderWidth: 2, pointRadius: h.length < 20 ? 4 : 0, pointHoverRadius: 5, tension: 0.25 },
           { label: "Money put in", data: h.map(p => p.invested), borderColor: css("--series-2"), backgroundColor: css("--series-2"),

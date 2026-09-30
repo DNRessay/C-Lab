@@ -93,6 +93,13 @@ def admin(event):
             db.add(row)
             db.commit()
             return {"ok": True, **{k: v for k, v in reader.status(db, user.id).items() if k != "last_read"}}
+        if event.get("action") == "reparse_statements":
+            return {"ok": True, **reader.reparse(db, user.id)}
+        if event.get("action") == "read_statements":
+            from .invest.ee.models import EEConnection
+
+            conn = db.scalar(select(EEConnection).where(EEConnection.user_id == user.id))
+            return {"ok": True, **reader.read_batch(db, conn, limit=int(event.get("limit", 25)))}
         if event.get("action") == "statement_shape":
             # Layout only (letters -> a, digits -> 9) of a stored statement, plus which lines the parser took.
             from .invest.ee.models import EEStatementDoc

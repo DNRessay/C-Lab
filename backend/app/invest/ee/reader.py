@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 
 from ...security import unseal
 from . import mail, platform
-from .models import EEConnection, EEMail, EESetting, EEStatementDoc, EEStatementLine
+from .models import (EEConnection, EEHoldingMonth, EEMail, EEMonthFigure, EESetting, EEStatementDoc,
+                     EEStatementLine)
 
 log = logging.getLogger(__name__)
 BATCH = 25
@@ -99,6 +100,81 @@ def parse_lines(body: str):
     return out
 
 
+MONTH_COL = re.compile(r"\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.? (\d{4})\b")
+FIGURE_KINDS = [  # 12-month summary row label -> what it is (first match wins)
+    ("opening", r"opening"),
+    ("closing", r"closing"),
+    ("costs", r"withholding|tax|charge|fee|cost|expense|vat|levy"),
+    ("income", r"dividend|interest|distribution|income"),
+    ("money_in", r"contribution|deposit|transfer.?in|funds? in|top.?up"),
+    ("money_out", r"withdraw|transfer.?out|funds? out|payment"),
+    ("growth", r"gain|loss|growth|movement"),
+]
+
+
+def _cols(line: str):
+    return [c for c in re.split(r"\s{2,}", line.strip()) if c]
+
+
+def _num(cell: str):
+    cell = cell.strip()
+    if not re.fullmatch(r"\(?-?(?:R|\$|£|€)?\s?-?[\d ,]*\.?\d+%?\)?", cell):
+        return None
+    v = _to_float(cell.rstrip("%"))
+    return v
+
+
+def figure_kind(label: str) -> str:
+    low = label.lower()
+    for kind, pattern in FIGURE_KINDS:
+        if re.search(pattern, low):
+            return kind
+    return "other"
+
+
+def parse_monthly(body: str):
+    """A monthly statement's 12-month summary and month-end holdings table."""
+    lines = [ln.rstrip() for ln in body.splitlines()]
+    months, figures, holdings = [], [], []
+    in_holdings = False
+    for ln in lines:
+        text = ln.strip()
+        if not text:
+            continue
+        found = MONTH_COL.findall(text)
+        if len(found) >= 6:  # the summary's month header: "Sep 2025  Oct 2025 ..."
+            months = [f"{y}-{MONTHS[m.lower()]:02d}" for m, y in found]
+            continue
+        cols = _cols(text)
+        if re.search(r"\bInstrument\b", text) and re.search(r"Curr\.? ?Value|Value", text):
+            in_holdings = True
+            continue
+        if in_holdings:
+            if re.match(r"(?i)total\b", text):
+                in_holdings = False
+                continue
+            nums = [_num(c) for c in cols[1:]]
+            if len(cols) >= 7 and all(n is not None for n in nums):
+                # read from the end, so a missing column on the left can't shift the important ones
+                weight, value, price, cost_price, cost, qty = nums[-1], nums[-2], nums[-3], nums[-4], nums[-5], nums[-6]
+                left = nums[:-6]
+                row = {"instrument": cols[0][:200], "qty": qty, "cost": cost, "price": price, "value": value,
+                       "weight": weight, "buy_qty": None, "buy_cost": None, "sell_qty": None, "sell_proceeds": None,
+                       "profit": None}
+                if len(left) >= 7:  # opening qty/cost, purchases qty/cost, sales qty/proceeds/profit
+                    row.update(buy_qty=left[2], buy_cost=left[3], sell_qty=left[4], sell_proceeds=left[5], profit=left[6])
+                holdings.append(row)
+            elif holdings and len(cols) == 1 and not re.search(r"\d", text):
+                holdings[-1]["instrument"] = (holdings[-1]["instrument"] + " " + text)[:200]  # wrapped name
+            continue
+        if months and len(cols) == len(months) + 1 and not re.search(r"\d", cols[0]):
+            values = [_num(c) for c in cols[1:]]
+            if all(v is not None for v in values):
+                figures += [{"month": m, "label": cols[0][:80], "kind": figure_kind(cols[0]), "value": v}
+                            for m, v in zip(months, values)]
+    return {"months": months, "figures": figures, "holdings": holdings}
+
+
 def shape(body: str, max_lines=40):
     """The statement's layout with every letter as 'a' and digit as '9': shows the format, not the contents."""
     lines = [re.sub(r"[A-Za-z]", "a", re.sub(r"\d", "9", ln.rstrip())) for ln in body.splitlines() if ln.strip()]
@@ -120,9 +196,22 @@ def save_doc(db: Session, conn: EEConnection, item: dict, info: dict, body: str,
     doc.account, doc.account_number, doc.kind, doc.period = info["account"][:80], info["account_number"], info["kind"], info["period"]
     doc.body, doc.pages, doc.status, doc.error = body, pages, "error" if error else "ok", error[:500]
     db.flush()
-    rows = parse_lines(body) if body else []
-    db.execute(delete(EEStatementLine).where(EEStatementLine.doc_id == doc.id))
     currency = mail.account_currency(doc.account)
+    for model in (EEStatementLine, EEHoldingMonth, EEMonthFigure):
+        db.execute(delete(model).where(model.doc_id == doc.id))
+    rows = []
+    if body and doc.kind == "monthly":
+        m = parse_monthly(body)
+        month = doc.period if re.fullmatch(r"\d{4}-\d{2}", doc.period or "") else (m["months"][-1] if m["months"] else "")
+        for h in m["holdings"]:
+            db.add(EEHoldingMonth(user_id=conn.user_id, doc_id=doc.id, account=doc.account[:80], currency=currency,
+                                  month=month, **h))
+        for f in m["figures"]:
+            db.add(EEMonthFigure(user_id=conn.user_id, doc_id=doc.id, account=doc.account[:80], currency=currency,
+                                 period=month, **f))
+        doc.lines_found = len(m["holdings"]) + len(m["figures"])
+        return doc
+    rows = parse_lines(body) if body else []
     for r in rows:
         db.add(EEStatementLine(user_id=conn.user_id, doc_id=doc.id, account=doc.account[:80], currency=currency,
                                category=categorise("", r["description"]), **r))
@@ -196,3 +285,19 @@ def status(db: Session, user_id: int, conn: EEConnection = None):
             "failed": sum(1 for d in docs if d.status == "error"), "lines": sum(d.lines_found for d in docs),
             "last_read": max((d.read_at for d in docs), default=None)}
 
+
+
+def month_series(db: Session, user_id: int):
+    """Per account and month, each summary kind (money_in, income, closing, ...) from the newest statement covering it."""
+    rows = db.scalars(select(EEMonthFigure).where(EEMonthFigure.user_id == user_id)
+                      .order_by(EEMonthFigure.period))  # later statements overwrite earlier ones
+    out = {}
+    for r in rows:
+        key = (r.account, r.currency, r.month)
+        cell = out.setdefault(key, {})
+        cell.setdefault(r.period, {})
+        cell[r.period][r.kind] = cell[r.period].get(r.kind, 0.0) + (r.value or 0.0)
+    result = {}
+    for (account, currency, month), by_period in out.items():
+        result[(account, currency, month)] = by_period[max(by_period)]
+    return result

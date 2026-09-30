@@ -1,3 +1,4 @@
+import sys
 from datetime import date, datetime
 from pathlib import Path
 
@@ -563,4 +564,60 @@ def test_statement_password_is_sealed_and_used(market, monkeypatch):
     db.close()
     api.post("/api/ee/statements/read", headers=h)
     assert seen and seen[0] == ["8001015009087"]
+    api.delete("/api/ee/platform", headers=h)
+
+
+MONTHLY_STATEMENT = """                                  Investor Details    Scheduled Transactions    Cumulative Account Summary    Performance Results
+Cumulative Account Summary (last 12 months)
+                        Mar 2026        Apr 2026        May 2026        Jun 2026        Jul 2026        Aug 2026
+Opening Value              100             110             112             120             121             130
+Contributions               10               0               5               0              10               0
+Withdrawals                  0               0               0               0               0             -20
+Dividends                    1               2               0               1               0               3
+Dividend Withholding Tax     0              -1               0               0               0              -1
+Platform Charges            -1              -1              -1              -1              -1              -1
+Unrealised Gains/Losses      0               2               4               1              -1               9
+Closing Value              110             112             120             121             130             120
+                        Opening Balance              Purchases                      Sales                          Closing Balance
+Instrument          Qty       Cost      Qty       Cost      Qty       Proceeds     Profit/Loss     Qty       Cost      Cost Price     Curr Price     Curr Value     Weight
+Satrix 40         1.0000     90.00    0.5000     45.00    0.0000       0.00          0.00      1.5000    135.00      9 000.00       9 500.00        142.50      95.0%
+Sirius Real      2.0000      5.00    0.0000      0.00    0.0000       0.00          0.00      2.0000      5.00        250.00         375.00          7.50       5.0%
+Estate Ltd
+Total                                                                                                    140.00                                    150.00     100.0%
+"""
+
+
+def test_monthly_statement_parser():
+    from app.invest.ee import reader
+
+    m = reader.parse_monthly(MONTHLY_STATEMENT)
+    assert m["months"] == ["2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08"]
+    kinds = {f["label"]: f["kind"] for f in m["figures"]}
+    assert kinds == {"Opening Value": "opening", "Contributions": "money_in", "Withdrawals": "money_out",
+                     "Dividends": "income", "Dividend Withholding Tax": "costs", "Platform Charges": "costs",
+                     "Unrealised Gains/Losses": "growth", "Closing Value": "closing"}
+    closing = [f["value"] for f in m["figures"] if f["kind"] == "closing"]
+    assert closing == [110, 112, 120, 121, 130, 120]
+    satrix, sirius = m["holdings"]
+    assert (satrix["qty"], satrix["cost"], satrix["price"], satrix["value"], satrix["weight"]) == (1.5, 135.0, 9500.0, 142.5, 95.0)
+    assert (satrix["buy_qty"], satrix["buy_cost"]) == (0.5, 45.0)
+    assert sirius["instrument"] == "Sirius Real Estate Ltd"  # wrapped name joined
+
+
+def test_monthly_statements_feed_history_and_charts(market, monkeypatch):
+    from app.invest.ee import reader
+
+    monkeypatch.setattr(reader, "pdf_text", lambda data, extra_passwords=(): (MONTHLY_STATEMENT, 2))
+    monkeypatch.setattr(sys.modules[__name__], "STATEMENT_PAGE", STATEMENT_PAGE.replace("EE ZAR Aug 2026.pdf", "EE0000001-1000001 Test -Monthly Statement Aug26.pdf").replace("EE ZAR Jul 2026.pdf", "EE0000001-1000001 Test -Monthly Statement Jul26.pdf"))
+    h = register("nosy")
+    api.put("/api/ee/platform", headers=h, json={"username": "me", "password": "secret"})
+    api.post("/api/ee/statements/read", headers=h)
+    s = api.get("/api/invest/summary", headers=h).json()
+    hist = s["statement_history"]
+    assert [p["month"] for p in hist] == ["2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08"]
+    assert [p["value"] for p in hist] == [110, 112, 120, 121, 130, 120]
+    assert [p["invested"] for p in hist] == [110, 110, 115, 115, 125, 105]  # opening 100, then contributions/withdrawals
+    c = api.get("/api/invest/charts", headers=h).json()
+    i = c["months"].index("2026-04")
+    assert c["income"][i] == 2 and c["costs"][i] == 2  # dividend; withholding tax + charges
     api.delete("/api/ee/platform", headers=h)

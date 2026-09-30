@@ -114,3 +114,44 @@ class EESetting(Base):
     id: Mapped[int] = pk()
     user_id: Mapped[int] = mapped_column(BigId, ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
     pdf_password: Mapped[str] = text()  # sealed; EasyEquities locks statement PDFs (usually with your ID number)
+
+
+class EEHoldingMonth(Base):
+    """A holding at the end of a month, from the monthly statement's holdings table."""
+
+    __tablename__ = "ee_holding_months"
+    id: Mapped[int] = pk()
+    user_id: Mapped[int] = user_fk()
+    doc_id: Mapped[int] = mapped_column(BigId, ForeignKey("ee_statement_docs.id", ondelete="CASCADE"), nullable=False,
+                                        index=True)
+    account: Mapped[str] = text(80)
+    currency: Mapped[str] = text(3)
+    month: Mapped[str] = text(7)  # YYYY-MM
+    instrument: Mapped[str] = text(200)
+    buy_qty: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    buy_cost: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    sell_qty: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    sell_proceeds: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    profit: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    qty: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    cost: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    value: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    weight: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+
+class EEMonthFigure(Base):
+    """One cell of the 12-month account summary (e.g. Contributions for 2025-03), as the statement labels it."""
+
+    __tablename__ = "ee_month_figures"
+    id: Mapped[int] = pk()
+    user_id: Mapped[int] = user_fk()
+    doc_id: Mapped[int] = mapped_column(BigId, ForeignKey("ee_statement_docs.id", ondelete="CASCADE"), nullable=False,
+                                        index=True)
+    account: Mapped[str] = text(80)
+    currency: Mapped[str] = text(3)
+    period: Mapped[str] = text(7)  # the statement's own month; newer statements win for overlapping months
+    month: Mapped[str] = text(7)
+    label: Mapped[str] = text(80)
+    kind: Mapped[str] = text(20)  # opening | closing | money_in | money_out | income | costs | growth | other
+    value: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
