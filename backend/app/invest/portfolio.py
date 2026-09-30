@@ -184,8 +184,12 @@ def summary(db: Session, user_id: int):
                                                   .order_by(PropertyAsset.name))]
     physical_equity = sum(p["equity"] for p in props)
     ep_value = sum(r["value"] for r in rows if r["asset_class"] == "easyproperties")
-    net_worth = portfolio_value + physical_equity
-    history = record_snapshot(db, user_id, portfolio_value, invested, net_worth) if (rows or props or txns) else []
+    from ..banking.reader import position
+
+    bank = position(db, user_id)
+    net_worth = portfolio_value + physical_equity + bank["cash"] - bank["debt"]
+    tracked = rows or props or txns or bank["accounts"] or bank["liabilities"]
+    history = record_snapshot(db, user_id, portfolio_value, invested, net_worth) if tracked else []
     return {
         "history": history,
         "statement_history": statement_history(db, user_id) if conn else [],
@@ -204,6 +208,9 @@ def summary(db: Session, user_id: int):
         "property_equity": physical_equity + ep_value,
         "easyproperties_value": ep_value,
         "net_worth": net_worth,
+        # Real net worth = investments + own property equity + bank balances - debts. Fees already came out of balances.
+        "banking": {"cash": bank["cash"], "debt": bank["debt"], "fees_12m": bank["fees_12m"],
+                    "accounts": len(bank["accounts"])},
         "easyequities": {"value": ee_view["value_zar"], "taken_at": ee_view["taken_at"],
                          "accounts": [{k: a[k] for k in ("name", "currency", "value", "value_zar", "cash_zar", "cost_zar",
                                                          "warnings")} | {"holdings": len(a["holdings"])}

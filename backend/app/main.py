@@ -12,6 +12,7 @@ from . import auth
 from .config import settings
 from .db import SessionLocal, init_db
 from .invest import markets
+from .banking.router import router as bank_router
 from .invest.ee.router import router as ee_router
 from .invest.router import router as invest_router
 
@@ -50,7 +51,7 @@ async def unhandled(request: Request, exc: Exception):
     return JSONResponse({"detail": "Internal server error."}, status_code=500)
 
 
-for r in (auth.router, invest_router, markets.router, ee_router):
+for r in (auth.router, invest_router, markets.router, ee_router, bank_router):
     app.include_router(r)
 
 
@@ -122,6 +123,10 @@ def admin(event):
                     "lines_found": doc.lines_found,
                     "shape": [("* " if numbered[i] in taken else "  ") + s for i, s in
                               enumerate(reader.shape(doc.body, max_lines=10_000))][start:start + count]}
+        if event.get("action") == "read_bank":
+            from .banking import reader as bank_reader
+
+            return bank_reader.read_batch(db, user.id, limit=int(event.get("limit", 15)))
         return {"ok": False, "error": "unknown action"}
     finally:
         db.close()
@@ -142,6 +147,13 @@ def handler(event, context):
                 result["easyequities_synced"] = sync_all(db)
             except Exception:
                 logging.exception("Nightly EasyEquities sync failed")
+                db.rollback()
+            try:
+                from .banking.reader import read_all
+
+                result["bank_statements"] = read_all(db)
+            except Exception:
+                logging.exception("Nightly bank statement read failed")
                 db.rollback()
             result["alerts_sent"] = check_all(db)
             result["snapshots"] = record_all(db)

@@ -49,5 +49,6 @@ def init_db():
     from . import models  # noqa: F401
     from .invest import models as invest_models  # noqa: F401
     from .invest.ee import models as ee_models  # noqa: F401
+    from .banking import models as bank_models  # noqa: F401
 
     Base.metadata.create_all(engine)

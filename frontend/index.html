@@ -106,7 +106,7 @@
             <button type="button" id="ee-google" class="gsi"><svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg><span>Sign in with Google</span></button>
             <button type="button" id="ee-mail-off" class="secondary" hidden>Disconnect</button>
           </div>
-          <p class="muted" id="ee-google-note" style="margin:0.6rem 0 0">Google asks you to allow read-only access to your mail. C-Lab only searches for mail from easyequities.co.za, and you can remove its access any time in your Google account.</p>
+          <p class="muted" id="ee-google-note" style="margin:0.6rem 0 0">Google asks you to allow read-only access to your mail. C-Lab only searches for mail from easyequities.co.za and for statement emails from your banks, and you can remove its access any time in your Google account.</p>
         </div>
     </section>
 
@@ -328,13 +328,86 @@
         </form>
       </div>
     </section>
+    <!-- Banking -->
+    <section id="banking" hidden>
+      <div class="grid" id="bank-kpis"></div>
+      <div class="reader-bar">
+        <div><strong>Bank statements from Gmail</strong><br><small class="muted" id="bank-note"></small></div>
+        <button id="bank-read" class="small">Read bank statements</button>
+      </div>
+
+      <div class="chart-grid" id="bank-charts" hidden>
+        <div class="card">
+          <h3>What you own vs what you owe</h3>
+          <div class="chart-box short" id="bank-worth-box"><canvas id="bank-worth-chart" role="img" aria-label="Assets and debts"></canvas></div>
+        </div>
+        <div class="card">
+          <h3>Money in and out per month</h3>
+          <div class="legend"><span><i style="background:var(--pos)"></i>In</span><span><i style="background:var(--neg)"></i>Out (spending + fees)</span></div>
+          <div class="chart-box short"><canvas id="bank-flow-chart" role="img" aria-label="Money in and out per month, transfers left out"></canvas></div>
+        </div>
+        <div class="card">
+          <h3>Where the money went (last 12 months)</h3>
+          <div class="pie-row"><div class="pie-box"><canvas id="bank-cat-chart" role="img" aria-label="Spending by category"></canvas></div><ul class="pie-legend" id="bank-cat-legend"></ul></div>
+        </div>
+        <div class="card">
+          <h3>Bank fees per month</h3>
+          <div class="chart-box short"><canvas id="bank-fee-chart" role="img" aria-label="Bank fees per month"></canvas></div>
+        </div>
+      </div>
+
+      <h2>Accounts</h2>
+      <p class="muted">Latest balance from each account's newest statement. Wrong type? Change it: credit cards and loans count as debt.</p>
+      <div class="grid" id="bank-accounts"></div>
+
+      <h2>Debts you add yourself</h2>
+      <p class="muted">Car finance, a personal loan, store accounts, money you owe someone. Home loans go on the Property page (bond).</p>
+      <div class="grid" id="liabilities"></div>
+      <details class="section" id="sec-liab-add">
+        <summary><span>Add a debt</span></summary>
+        <form id="liab-form" class="card">
+          <div class="fields">
+            <div class="field"><label>Name</label><input name="name" required placeholder="e.g. Polo finance" /></div>
+            <div class="field"><label>Type</label><select name="kind"><option value="vehicle">Vehicle finance</option><option value="loan">Personal loan</option>
+              <option value="credit">Credit card</option><option value="store">Store account</option><option value="personal">Owed to someone</option><option value="other">Other</option></select></div>
+            <div class="field"><label>Still owing (R)</label><input name="balance" type="number" step="0.01" min="0" required /></div>
+            <div class="field"><label>Interest % a year</label><input name="rate" type="number" step="0.01" /></div>
+            <div class="field"><label>Monthly payment (R)</label><input name="monthly" type="number" step="0.01" /></div>
+          </div>
+          <button type="submit">Add debt</button>
+        </form>
+      </details>
+
+      <div class="search-bar">
+        <input id="bank-search" type="search" placeholder="Search bank transactions…" autocomplete="off" aria-label="Search bank transactions" />
+        <small class="muted" id="bank-search-note"></small>
+      </div>
+      <details class="section" id="sec-bank-txns">
+        <summary><span>Bank transactions</span><span class="count" id="cnt-bank"></span></summary>
+        <div class="row" style="margin-bottom:0.6rem">
+          <select id="bank-cat"><option value="">All categories</option></select>
+          <select id="bank-acc"><option value="">All accounts</option></select>
+        </div>
+        <div class="card table-wrap"><table>
+          <thead><tr><th>Date</th><th>What</th><th>Account</th><th class="num">Amount</th><th class="num">Fee</th><th class="num">Balance</th></tr></thead>
+          <tbody id="bank-rows"></tbody>
+        </table></div>
+      </details>
+      <details class="section" id="sec-bank-stmts">
+        <summary><span>Statements read</span><span class="count" id="cnt-bank-stmts"></span></summary>
+        <div class="card table-wrap"><table>
+          <thead><tr><th>Received</th><th>Account</th><th>Status</th><th class="num">Lines</th><th class="num">Closing balance</th><th></th></tr></thead>
+          <tbody id="bank-stmts"></tbody>
+        </table></div>
+      </details>
+    </section>
   </main>
   <script type="module">
     import { api } from "/js/api.js";
     import { $, $$, action, amount, badge, day, download, empty, esc, flash, money, onSubmit, page, pct, setActive } from "/js/ui.js";
 
     const PAGES = [["markets", "Markets"], ["overview", "Portfolio"], ["holdings", "Holdings"], ["transactions", "Transactions"],
-      ["watchlist", "Watchlist"], ["property", "Property"],
+      ["banking", "Banking"], ["watchlist", "Watchlist"], ["property", "Property"],
       ["account", "Account", [["profile", "Profile"], ["easyequities", "EasyEquities"], ["google", "Google"]]]];
     page(PAGES);
 
@@ -359,7 +432,8 @@
         (s.income ? kpi("Dividends + interest", money(s.income.dividend + s.income.interest), "all time, from EasyEquities") +
           kpi("Fees + tax paid", `<span class="neg">${money(s.income.fee + s.income.tax)}</span>`, `fees ${money(s.income.fee)} · tax ${money(s.income.tax)}`) : "") +
         kpi("Property equity", money(s.property_equity), s.easyproperties_value ? `incl. ${money(s.easyproperties_value)} EasyProperties` : "") +
-        kpi("Net worth (tracked)", money(s.net_worth));
+        (s.banking?.accounts || s.banking?.debt ? kpi("Bank − debt", signed(s.banking.cash - s.banking.debt), `bank ${money(s.banking.cash)} · debt ${money(s.banking.debt)}`) : "") +
+        kpi("Real net worth", money(s.net_worth), s.banking?.accounts || s.banking?.debt ? "incl. bank and debts" : "<a href=\"#banking\">add your bank</a>");
 
       $("#bench-note").textContent = s.invested
         ? "If every rand you put in had gone into these instead, on the same days (price growth only, dividends not included):"
@@ -978,9 +1052,117 @@
     }
     $("#ee-kind").addEventListener("change", () => loadEEMails().catch(e => flash(e.message, "err")));
 
+    // banking
+    const ACC_KIND = { bank: "Bank account", credit: "Credit card", loan: "Loan" };
+    const LKIND = { vehicle: "Vehicle finance", loan: "Personal loan", credit: "Credit card", store: "Store account", personal: "Owed to someone", other: "Other" };
+    let bankRows = [];
+    async function loadBank() {
+      const [b, s] = await Promise.all([api.bank(), api.investSummary()]);
+      const st = b.status;
+      const kpi = (label, value, sub = "") => `<div class="card stat"><div class="value">${value}</div><div class="label">${label}${sub ? `<br>${sub}` : ""}</div></div>`;
+      $("#bank-kpis").innerHTML =
+        kpi("Money in the bank", money(b.cash), `${b.accounts.filter(a => !a.hidden).length} account(s)`) +
+        kpi("Debt", `<span class="neg">${money(b.debt)}</span>`, `${b.accounts.filter(a => a.kind !== "bank").length} card/loan · ${b.liabilities.length} added`) +
+        kpi("Bank fees", `<span class="neg">${money(b.fees_12m)}</span>`, "last 12 months") +
+        kpi("Real net worth", signed(s.net_worth), "investments + property + bank − debt");
+      $("#bank-note").innerHTML = !st.google ? `Sign in with Google first (<a href="#google">Account ▸ Google</a>).`
+        : `${st.ok} read · ${st.transactions} transactions${st.locked ? ` · ${st.locked} locked (${st.pdf_password_set ? "the saved PDF password didn't open them" : `set the PDF password on <a href="#easyequities">EasyEquities</a>, banks usually use your ID number too`})` : ""}${st.failed ? ` · ${st.failed} failed` : ""}`;
+      $("#bank-read").disabled = !st.google;
+
+      const own = s.value + (s.properties || []).reduce((a, p) => a + p.equity, 0);
+      $("#bank-charts").hidden = !(b.accounts.length || b.liabilities.length || b.months.length);
+      hbar("#bank-worth-chart", ["Investments + property", "Bank", "Debt"], [own, b.cash, -b.debt],
+        [css("--series-1"), css("--series-2"), css("--neg")]);
+      upDownChart("#bank-flow-chart", b.months.map(m => m.month), b.months.map(m => m.in), b.months.map(m => m.out), "In", "Out");
+      const cats = Object.entries(b.categories).map(([label, value]) => ({ label, value }));
+      $("#bank-cat-chart").closest(".card").hidden = !cats.length;
+      if (cats.length) pie("#bank-cat-chart", "#bank-cat-legend", cats);
+      chart("#bank-fee-chart", { type: "bar",
+        data: { labels: b.months.map(m => monthLabel(m.month)), datasets: [{ label: "Fees", data: b.months.map(m => m.fees),
+          backgroundColor: css("--neg"), borderRadius: 4, borderSkipped: "start", maxBarThickness: 18 }] },
+        options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip }, scales: barScales } });
+
+      $("#bank-accounts").innerHTML = b.accounts.map(a => `<div class="card${a.hidden ? " muted" : ""}">
+        <strong>${esc(a.name)}</strong><br><small class="muted">${a.balance_date ? `as at ${a.balance_date}` : "no balance yet"}</small>
+        <div class="value ${a.kind !== "bank" || a.balance < 0 ? "neg" : ""}" style="font-size:1.4rem;font-weight:700;margin:0.4rem 0">${money(a.balance)}</div>
+        <div class="row"><select class="acc-kind" data-id="${a.id}">${Object.entries(ACC_KIND).map(([k, v]) => `<option value="${k}"${k === a.kind ? " selected" : ""}>${v}</option>`).join("")}</select>
+        <button class="secondary small acc-hide" data-id="${a.id}" data-h="${a.hidden ? "" : "1"}">${a.hidden ? "Count it" : "Leave out"}</button></div></div>`).join("")
+        || `<p class="muted">No bank statements read yet.</p>`;
+      $$(".acc-kind").forEach(el => el.addEventListener("change", async () => {
+        try { await api.updateBankAccount(el.dataset.id, { kind: el.value }); loadBank(); } catch (e) { flash(e.message, "err"); }
+      }));
+      $$(".acc-hide").forEach(el => el.addEventListener("click", async () => {
+        try { await api.updateBankAccount(el.dataset.id, { hidden: !!el.dataset.h }); loadBank(); } catch (e) { flash(e.message, "err"); }
+      }));
+
+      $("#liabilities").innerHTML = b.liabilities.map(m => `<div class="card">
+        <strong>${esc(m.name)}</strong><br><small class="muted">${LKIND[m.kind] || esc(m.kind)}${m.rate != null ? ` · ${m.rate}% a year` : ""}${m.monthly ? ` · ${money(m.monthly)}/month` : ""}</small>
+        <div class="neg" style="font-size:1.4rem;font-weight:700;margin:0.4rem 0">${money(m.balance)}</div>
+        <div class="row"><button class="secondary small liab-upd" data-id="${m.id}">Update balance</button><button class="secondary small liab-del" data-id="${m.id}">Remove</button></div></div>`).join("")
+        || `<p class="muted">None added.</p>`;
+      $$(".liab-upd").forEach(el => el.addEventListener("click", async () => {
+        const m = b.liabilities.find(x => x.id == el.dataset.id);
+        const v = prompt(`How much is still owing on ${m.name}? (R)`, m.balance);
+        if (v === null || !v.trim()) return;
+        try { await api.updateLiability(m.id, { ...m, balance: v.trim() }); loadBank(); } catch (e) { flash(e.message, "err"); }
+      }));
+      $$(".liab-del").forEach(el => el.addEventListener("click", async () => {
+        if (!confirm("Remove this debt?")) return;
+        try { await api.deleteLiability(el.dataset.id); loadBank(); } catch (e) { flash(e.message, "err"); }
+      }));
+
+      bankRows = await api.bankTxns();
+      $("#cnt-bank").textContent = bankRows.length;
+      $("#bank-cat").innerHTML = `<option value="">All categories</option>` + [...new Set(bankRows.map(t => t.category))].sort().map(c => `<option>${esc(c)}</option>`).join("");
+      $("#bank-acc").innerHTML = `<option value="">All accounts</option>` + [...new Set(bankRows.map(t => t.account))].map(c => `<option>${esc(c)}</option>`).join("");
+      renderBankRows();
+      const stmts = await api.bankStatements();
+      $("#cnt-bank-stmts").textContent = stmts.length;
+      $("#bank-stmts").innerHTML = stmts.map(x => `<tr><td>${esc((x.received_at || "").slice(0, 10))}</td>
+        <td>${esc(x.account || x.bank)}<br><small class="muted">${esc(x.filename)}</small></td>
+        <td>${x.status === "ok" ? badge("read", "ok") : badge(x.status, "warn")}${x.error ? `<br><small class="muted">${esc(x.error)}</small>` : ""}</td>
+        <td class="num">${x.rows}</td><td class="num">${x.closing_balance != null ? money(x.closing_balance) : ""}</td>
+        <td>${x.status === "ok" ? `<button class="secondary small bank-text" data-id="${x.id}">Text</button>` : ""}</td></tr>`).join("") || empty(6, "Nothing read yet.");
+      $$(".bank-text").forEach(el => el.addEventListener("click", () => showBankText(el.dataset.id).catch(e => flash(e.message, "err"))));
+    }
+    function renderBankRows() {
+      const q = ($("#bank-search").value || "").trim().toLowerCase(), cat = $("#bank-cat").value, acc = $("#bank-acc").value;
+      const rows = bankRows.filter(t => (!cat || t.category === cat) && (!acc || t.account === acc) &&
+        (!q || `${t.description} ${t.category} ${t.account} ${t.amount}`.toLowerCase().includes(q)));
+      $("#bank-rows").innerHTML = rows.slice(0, 1500).map(t => `<tr><td>${t.date}</td>
+        <td>${esc(t.description)} ${badge(t.category, t.category === "Bank fees" ? "warn" : "")}</td><td><small>${esc(t.account)}</small></td>
+        <td class="num">${signed(t.amount)}</td><td class="num">${t.fee ? `<span class="neg">${money(t.fee)}</span>` : ""}</td>
+        <td class="num">${t.balance != null ? money(t.balance) : ""}</td></tr>`).join("") || empty(6, "No bank transactions.");
+      $("#bank-search-note").textContent = q || cat || acc ? `${rows.length} match${rows.length === 1 ? "" : "es"}` : "";
+      if (q) $("#sec-bank-txns").open = true;
+    }
+    async function showBankText(id) {
+      const d = await api.bankStatementText(id);
+      const box = document.createElement("div");
+      box.className = "modal";
+      box.innerHTML = `<div class="modal-card" role="dialog" aria-label="${esc(d.name)}"><div class="modal-head"><strong>${esc(d.name)}</strong>
+        <button class="secondary small modal-x">Close</button></div><pre>${esc(d.text)}</pre></div>`;
+      document.body.appendChild(box);
+      box.addEventListener("click", (e) => { if (e.target === box || e.target.closest(".modal-x")) box.remove(); });
+    }
+    let bankTimer;
+    $("#bank-search").addEventListener("input", () => { clearTimeout(bankTimer); bankTimer = setTimeout(renderBankRows, 150); });
+    $("#bank-cat").addEventListener("change", renderBankRows);
+    $("#bank-acc").addEventListener("change", renderBankRows);
+    action($("#bank-read"), async () => {
+      const r = await api.bankSync();
+      flash(`Found ${r.found} statement email(s), read ${r.read_now}, ${r.rows_now} lines. ${r.left ? r.left + " left, press again." : "All done."}`);
+      loadBank();
+    });
+    onSubmit($("#liab-form"), async (d, e) => {
+      await api.addLiability({ ...d, rate: d.rate || null, monthly: d.monthly || null });
+      e.target.reset();
+      loadBank();
+    });
+
     // pages
     const LOAD = { markets: loadMarkets, overview: loadSummary, easyequities: loadEE, google: loadEE, holdings: loadSummary,
-      transactions: loadTxns, watchlist: loadWatch, property: loadProps, profile: loadAccount };
+      transactions: loadTxns, banking: loadBank, watchlist: loadWatch, property: loadProps, profile: loadAccount };
     const ALIAS = { account: "profile" };
     function show() {
       const hash = location.hash.slice(1), id = LOAD[hash] ? hash : ALIAS[hash] || "markets";

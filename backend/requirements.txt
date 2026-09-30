@@ -11,3 +11,4 @@ curl_cffi==0.16.3
 beautifulsoup4==4.12.3
 cryptography>=42
 pypdf==6.19.0
+pdfplumber>=0.11
