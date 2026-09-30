@@ -76,6 +76,8 @@ def test_blog_on_overview_and_watchlist(market, monkeypatch):
     assert names["Sirius Real Estate Ltd"]["state"] == "open"
     grt = names["Growthpoint Properties Ltd (GRT)"]
     assert (grt["mine"], grt["symbol"], grt["can_buy"]) == ("watch", "GRT.JO", True)
+    assert grt["price"] == 16.0 and grt["this_pct"] == round(0.62 / 16, 5)  # one unit costs R16; this pays 3.9% of it
+    assert (grt["season"], grt["pays_in"]) == ("Spring", ["Oct"])
     s = api.get("/api/invest/summary", headers=h).json()
     assert s["blog"]["upcoming"] and s["blog"]["posts"]
 

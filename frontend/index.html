@@ -65,8 +65,11 @@
         <h2>Dividends from EasyEquities</h2>
         <p class="muted">Declared in EasyEquities' dividends updates. Own the share by the last day to trade to get paid. <span id="blog-note"></span></p>
         <div class="grid" id="blog-mine"></div>
+        <div class="row" style="margin-bottom:0.6rem"><label class="muted" for="blog-sort">Sort by</label>
+          <select id="blog-sort"><option value="date">Last day to trade</option><option value="yield">Yield (this dividend)</option>
+            <option value="yield12">Yield (12 months)</option><option value="season">Season paid</option><option value="amount">Dividend amount</option></select></div>
         <div class="card table-wrap"><table>
-          <thead><tr><th>What</th><th class="num">Amount</th><th>Last day to trade</th><th>Paid</th><th>Status</th></tr></thead>
+          <thead><tr><th>What</th><th class="num">Dividend</th><th class="num">Price (1 unit)</th><th class="num">Yield</th><th>Last day to trade</th><th>Paid</th><th>Status</th></tr></thead>
           <tbody id="blog-rows"></tbody>
         </table></div>
         <details class="section" id="blog-posts-wrap"><summary><span>Latest from EasyEquities</span><span class="count" id="cnt-blog"></span></summary>
@@ -282,7 +285,7 @@
         <summary><span>Dividend picks from EasyEquities</span><span class="count" id="cnt-picks"></span></summary>
         <p class="muted">Still time to buy before the last day to trade. <strong>Watch</strong> looks up the ticker and adds it here. <span id="picks-refresh-note"></span></p>
         <div class="card table-wrap"><table>
-          <thead><tr><th>What</th><th class="num">Amount</th><th>Last day to trade</th><th>Paid</th><th></th></tr></thead>
+          <thead><tr><th>What</th><th class="num">Dividend</th><th class="num">Price (1 unit)</th><th class="num">Yield</th><th>Last day to trade</th><th>Paid</th><th></th></tr></thead>
           <tbody id="picks"></tbody>
         </table></div>
         <button class="secondary small" id="blog-refresh">Check the blog now</button>
@@ -1229,6 +1232,32 @@
     const divAmt = (d) => d.amount == null ? "" : `${d.currency === "ZAR" ? "R" : d.currency === "USD" ? "$" : d.currency + " "}${amount(d.amount)}`;
     const dayOr = (d) => d ? day(d) : "—";
     const STATE = { open: ["still open", "ok"], paying: ["being paid", ""], paid: ["paid", "muted"] };
+    const SEASON_ORDER = ["Summer", "Autumn", "Winter", "Spring"];
+    const priceCell = (d) => d.price == null ? "—" : `${d.price_currency === "ZAR" ? "R" : d.price_currency === "USD" ? "$" : (d.price_currency || "") + " "}${amount(d.price)}`;
+    const yieldCell = (d) => `${d.this_pct != null ? (d.this_pct * 100).toFixed(2) + "%" : "—"}${d.yield_12m != null ? `<br><small class="muted">${(d.yield_12m * 100).toFixed(1)}% a year</small>` : ""}`;
+    function sortDivs(rows, how) {
+      const by = {
+        date: (a, b) => (a.ldt || "").localeCompare(b.ldt || ""),
+        yield: (a, b) => (b.this_pct ?? -1) - (a.this_pct ?? -1),
+        yield12: (a, b) => (b.yield_12m ?? -1) - (a.yield_12m ?? -1),
+        amount: (a, b) => (b.amount ?? 0) - (a.amount ?? 0),
+        season: (a, b) => SEASON_ORDER.indexOf(a.season) - SEASON_ORDER.indexOf(b.season) || (a.pay_date || "").localeCompare(b.pay_date || ""),
+      }[how] || (() => 0);
+      return [...rows].sort(by);
+    }
+    let blogData = null;
+    function renderBlogRows() {
+      const how = $("#blog-sort").value, rows = sortDivs(blogData?.upcoming || [], how).slice(0, 80);
+      let lastSeason = "";
+      $("#blog-rows").innerHTML = rows.map(d => {
+        const head = how === "season" && d.season !== lastSeason ? `<tr class="group-row"><td colspan="7"><strong>${esc(d.season || "Unknown")}</strong></td></tr>` : "";
+        lastSeason = d.season;
+        return `${head}<tr class="${d.state === "paid" ? "dim" : ""}"><td>${esc(d.instrument)}<br><small class="muted">${esc(d.account)} account${d.ticker ? ` · ${esc(d.ticker)}` : ""}${d.mine ? " · " + MINE[d.mine][0] : ""}${d.pays_in?.length ? ` · pays ${d.pays_in.join(", ")}` : ""}</small></td>
+        <td class="num">${divAmt(d)}</td><td class="num">${priceCell(d)}</td><td class="num">${yieldCell(d)}</td>
+        <td>${dayOr(d.ldt)}</td><td>${dayOr(d.pay_date)}</td><td>${badge(...STATE[d.state])}</td></tr>`;
+      }).join("") || empty(7, "No dividends in the latest posts yet. The blog is checked every night.");
+    }
+    $("#blog-sort").addEventListener("change", renderBlogRows);
     function renderBlog(b) {
       $("#blog-wrap").hidden = !(b && (b.upcoming.length || b.posts.length));
       if (!b) return;
@@ -1237,9 +1266,8 @@
         <div class="label"><strong>${esc(d.instrument)}</strong> ${badge(...MINE[d.mine])}<br>${d.estimate != null ? `${units(d.units)} × ${divAmt(d)} · ` : ""}${d.state === "open" ? `buy by ${dayOr(d.ldt)}` : d.state === "paying" ? `paid ${dayOr(d.pay_date)}` : `paid on ${dayOr(d.pay_date)}`}</div></div>`).join("");
       const open = b.upcoming.filter(d => d.state === "open").length;
       $("#blog-note").textContent = b.upcoming.length ? (open ? `${open} still open.` : "Nothing open right now; these are the latest declared.") : "";
-      $("#blog-rows").innerHTML = b.upcoming.slice(0, 50).map(d => `<tr class="${d.state === "paid" ? "dim" : ""}"><td>${esc(d.instrument)}<br><small class="muted">${esc(d.account)} account${d.mine ? " · " + MINE[d.mine][0] : ""}</small></td>
-        <td class="num">${divAmt(d)}</td><td>${dayOr(d.ldt)}</td><td>${dayOr(d.pay_date)}</td><td>${badge(...STATE[d.state])}</td></tr>`).join("")
-        || empty(5, "No dividends in the latest posts yet. The blog is checked every night.");
+      blogData = b;
+      renderBlogRows();
       $("#cnt-blog").textContent = b.posts.length;
       $("#blog-posts").innerHTML = b.posts.map(p => `<a class="card" href="${esc(p.url)}" target="_blank" rel="noopener">
         <strong>${esc(p.title)}</strong><br><small class="muted">${dayOr(p.published)}${p.items ? ` · ${p.items} dividends` : ""}</small>
@@ -1248,15 +1276,15 @@
     }
     async function loadPicks() {
       const b = await api.blog();
-      const picks = b.upcoming.filter(d => d.can_buy);
+      const picks = sortDivs(b.upcoming.filter(d => d.can_buy), "yield");
       picksOpen = picks.length;
       if (watchRows) summaryWatch(watchRows, picksOpen);
       $("#picks-wrap").hidden = false;
       $("#cnt-picks").textContent = picks.length;
       $("#picks").innerHTML = picks.map((d, i) => `<tr><td>${esc(d.instrument)}<br><small class="muted">${esc(d.account)} account</small></td>
-        <td class="num">${divAmt(d)}</td><td>${dayOr(d.ldt)}</td><td>${dayOr(d.pay_date)}</td>
+        <td class="num">${divAmt(d)}</td><td class="num">${priceCell(d)}</td><td class="num">${yieldCell(d)}</td><td>${dayOr(d.ldt)}</td><td>${dayOr(d.pay_date)}</td>
         <td>${d.mine ? badge(...MINE[d.mine]) : `<button class="small pick" data-i="${i}">Watch</button>`}</td></tr>`).join("")
-        || empty(5, b.upcoming.length ? "Every dividend in the latest update is past its last day to trade. New ones arrive with the next update (checked nightly)." : "No dividends read from the blog yet. Tap \"Check the blog now\".");
+        || empty(7, b.upcoming.length ? "Every dividend in the latest update is past its last day to trade. New ones arrive with the next update (checked nightly)." : "No dividends read from the blog yet. Tap \"Check the blog now\".");
       $$("#picks .pick").forEach(el => el.addEventListener("click", async () => {
         const d = picks[el.dataset.i];
         el.disabled = true;

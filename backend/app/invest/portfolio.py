@@ -73,10 +73,30 @@ def contributions(txns):
             for t in txns if t.kind in ("buy", "sell")]
 
 
-def money_flows(txns, statement):
-    """(dated money in/out, whether real deposits are known). EasyEquities' statement has every deposit AND
-    withdrawal, so when it's there it wins over emails (which can miss withdrawals); hand-entered ones are added."""
-    stmt = statement_flows(statement)
+def month_flows(db: Session, user_id: int):
+    """Net money in (+) or out (-) per month across all accounts, in rand, from the monthly statements'
+    Contributions and Withdrawals rows (dated at month end). Moves between your own accounts cancel out."""
+    import calendar
+
+    from .ee.reader import month_series
+
+    net, rates = defaultdict(float), {}
+    for (account, currency, month), kinds in month_series(db, user_id).items():
+        rate = rates.setdefault(currency, rand_rate(db, currency) or 0.0)
+        net[month] += (abs(kinds.get("money_in", 0.0)) - abs(kinds.get("money_out", 0.0))) * rate
+    out = []
+    for month, v in sorted(net.items()):
+        y, m = int(month[:4]), int(month[5:7])
+        if round(v, 2):
+            out.append((date(y, m, calendar.monthrange(y, m)[1]), Decimal(str(round(v, 2)))))
+    return out
+
+
+def money_flows(txns, statement, months=()):
+    """(dated money in/out, whether real deposits are known). EasyEquities' own records have every deposit AND
+    withdrawal, so they win over emails (which can miss withdrawals): statement lines if they carry deposits,
+    else the monthly statements' Contributions/Withdrawals. Hand-entered ones are added."""
+    stmt = statement_flows(statement) or list(months)
     if stmt:
         manual = [(t.date, Decimal(t.amount) if t.kind == "deposit" else -Decimal(t.amount))
                   for t in txns if t.source != "easyequities" and t.kind in ("deposit", "withdrawal")]
@@ -159,7 +179,7 @@ def summary(db: Session, user_id: int):
 
     statement = statement_rows(db, conn) if ee_view else []
     income = statement_income(db, statement)
-    flows, has_deposits = money_flows(txns, statement)
+    flows, has_deposits = money_flows(txns, statement, month_flows(db, user_id) if conn else ())
     if ee_view:
         # Cash sitting in EasyEquities wallets, straight from EasyEquities.
         cash = Decimal(str(round(sum(a["cash_zar"] for a in ee_view["accounts"]), 2)))

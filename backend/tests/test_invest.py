@@ -184,3 +184,6 @@ def test_money_flows_prefer_statement_with_withdrawals():
     assert known and sum(a for _, a in flows) == 800  # 1000 - 400 + 200 hand-entered
     flows, known = money_flows(txns, [])
     assert known and sum(a for _, a in flows) == 1200
+    # No deposit lines in the statement: the monthly Contributions/Withdrawals are used instead of the emails.
+    flows, known = money_flows(txns, [], [(d(2025, 1, 31), 1000), (d(2025, 2, 28), -700)])
+    assert known and sum(a for _, a in flows) == 500

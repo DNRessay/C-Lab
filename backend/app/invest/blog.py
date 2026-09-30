@@ -3,6 +3,7 @@
 import logging
 import re
 from datetime import date, datetime, timedelta
+from collections import defaultdict
 from typing import Optional
 
 from bs4 import BeautifulSoup
@@ -60,6 +61,57 @@ class BlogDividend(Base):
     ldt: Mapped[Optional[date]] = mapped_column(Date, nullable=True, index=True)
     pay_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     line: Mapped[str] = text()
+
+
+class BlogSymbol(Base):
+    """Ticker for a company named in the blog (looked up once), so its price and yield can be shown."""
+
+    __tablename__ = "ee_blog_symbols"
+    __table_args__ = (UniqueConstraint("key"),)
+    id: Mapped[int] = pk()
+    key: Mapped[str] = text(220)  # account|normalised name
+    instrument: Mapped[str] = text(200)
+    symbol: Mapped[str] = text(30)  # "" when nothing was found
+    checked_at: Mapped[datetime] = created()
+
+
+# South African seasons, by the month the dividend is paid.
+SEASONS = {12: "Summer", 1: "Summer", 2: "Summer", 3: "Autumn", 4: "Autumn", 5: "Autumn",
+           6: "Winter", 7: "Winter", 8: "Winter", 9: "Spring", 10: "Spring", 11: "Spring"}
+MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def symbol_key(account, instrument):
+    return (account + "|" + norm(re.sub(r"\(.*?\)", " ", instrument)))[:220]
+
+
+def resolve_symbols(db: Session, days=150, limit=40):
+    """Look up tickers for recent blog companies (not preference shares), then refresh their prices."""
+    from . import prices
+
+    since = utcnow().date() - timedelta(days=days)
+    known = {k: sym for k, sym in db.execute(select(BlogSymbol.key, BlogSymbol.symbol))}
+    looked = 0
+    for account, instrument in db.execute(select(BlogDividend.account, BlogDividend.instrument).distinct()
+                                          .where(BlogDividend.ldt >= since)):
+        key = symbol_key(account, instrument)
+        if key in known or re.search(r"preference|debenture|note\b", instrument, re.I):
+            continue
+        if looked >= limit:
+            break
+        name = re.sub(r"\(.*?\)", " ", instrument)
+        known[key] = search_symbol(name, account) or ""
+        db.add(BlogSymbol(key=key, instrument=instrument[:200], symbol=known[key][:30]))
+        db.commit()
+        looked += 1
+    priced = 0
+    for sym in sorted({v for v in known.values() if v}):
+        try:
+            prices.quote(db, sym)
+            priced += 1
+        except Exception:
+            db.rollback()
+    return {"looked_up": looked, "priced": priced}
 
 
 def _get(url):
@@ -325,7 +377,13 @@ def refresh(db: Session, limit=12):
             post.status, post.error, post.fetched_at = "error", f"{type(e).__name__}: {e}"[:400], utcnow()
             db.add(post)
         db.commit()
-    log.info("EasyEquities blog: %d links, %d read", len(links), done)
+    try:
+        syms = resolve_symbols(db)
+    except Exception:
+        db.rollback()
+        log.exception("Blog ticker lookup failed")
+        syms = {}
+    log.info("EasyEquities blog: %d links, %d read, %s", len(links), done, syms)
     return {"links": len(links), "read": done}
 
 
@@ -367,6 +425,15 @@ def view(db: Session, holdings, watch, days_back=45):
     rows = db.execute(select(BlogDividend, BlogPost).join(BlogPost, BlogDividend.post_id == BlogPost.id)
                       .where((BlogDividend.ldt >= today - timedelta(days=days_back)) | (BlogDividend.pay_date >= today))
                       .order_by(BlogDividend.ldt.desc())).all()
+    from .models import PriceCache
+
+    symbols = dict(db.execute(select(BlogSymbol.key, BlogSymbol.symbol)).all())
+    wanted = {v for v in symbols.values() if v} | {w.symbol for w in watch} | {h.get("symbol") for h in holdings if h.get("symbol")}
+    cache = {c.symbol: c for c in db.scalars(select(PriceCache).where(PriceCache.symbol.in_(wanted)))}
+    pay_months = defaultdict(set)
+    for account, instrument, paid in db.execute(select(BlogDividend.account, BlogDividend.instrument, BlogDividend.pay_date)):
+        if paid:
+            pay_months[symbol_key(account, instrument)].add(paid.month)
     seen, out = set(), []
     for d, p in rows:
         key = (d.account, norm(d.instrument), d.ldt)
@@ -376,7 +443,18 @@ def view(db: Session, holdings, watch, days_back=45):
         m = match(d.instrument)
         state = ("open" if d.ldt and d.ldt >= today else "paying" if d.pay_date and d.pay_date >= today else "paid")
         qty = float(units.get(m[1]) or 0) if m and m[0] == "hold" else None
-        out.append({"instrument": d.instrument, "account": d.account, "amount": d.amount, "currency": d.currency,
+        key_s = symbol_key(d.account, d.instrument)
+        sym = (m[1] if m else "") or symbols.get(key_s, "")
+        pc = cache.get(sym)
+        price = float(pc.price) if pc and pc.price is not None else None
+        same = pc is not None and (pc.currency or "").upper() == (d.currency or "").upper()
+        paid_month = (d.pay_date or d.ldt).month if (d.pay_date or d.ldt) else None
+        out.append({"price": price, "price_currency": pc.currency if pc else "", "ticker": sym,
+                    "this_pct": round(d.amount / price, 5) if price and d.amount is not None and same else None,
+                    "yield_12m": round(float(pc.dividends_12m) / price, 5) if price and pc.dividends_12m else None,
+                    "season": SEASONS.get(paid_month, ""),
+                    "pays_in": [MONTH_NAMES[i - 1] for i in sorted(pay_months.get(key_s, ()))],
+                    "instrument": d.instrument, "account": d.account, "amount": d.amount, "currency": d.currency,
                     "ldt": d.ldt.isoformat() if d.ldt else None, "pay_date": d.pay_date.isoformat() if d.pay_date else None,
                     "mine": m[0] if m else "", "symbol": m[1] if m else "", "post": p.url, "state": state,
                     "can_buy": state == "open", "units": qty,
