@@ -42,5 +42,9 @@ def test_markets_board(monkeypatch):
 def test_schedule_event_runs_alerts(monkeypatch):
     import app.invest.alerts as alerts
 
+    import app.invest.ee.sync as ee_sync
+
     monkeypatch.setattr(alerts, "check_all", lambda db: 3)
-    assert handler({"source": "aws.events", "detail-type": "Scheduled Event"}, None) == {"alerts_sent": 3}
+    monkeypatch.setattr(ee_sync, "sync_all", lambda db: 1)
+    assert handler({"source": "aws.events", "detail-type": "Scheduled Event"}, None) == \
+        {"easyequities_synced": 1, "alerts_sent": 3}

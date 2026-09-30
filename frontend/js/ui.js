@@ -60,17 +60,31 @@ export async function poll(fn, done, onTick, ms = 2000, maxTries = 450) {
 
 export const empty = (cols, text) => `<tr><td colspan="${cols}" class="muted">${esc(text)}</td></tr>`;
 
-export function page() {
+// Top bar. `links` = [[id, label], ...] become menu items (#id); on phones they fold into a burger menu.
+export function page(links = []) {
   if (!tokens.isLoggedIn()) {
     location.href = "/login.html";
     throw new Error("redirecting");
   }
   const nav = $("#nav");
-  if (nav) {
-    nav.innerHTML = `<a class="brand" href="/">C-Lab</a><span class="muted" style="font-size:0.85rem">Charlie's Lab</span>
-      <div class="links"><button id="logout" class="secondary small">Log out</button></div>`;
-    $("#logout").addEventListener("click", () => { tokens.clear(); location.href = "/login.html"; });
-  }
+  if (!nav) return;
+  nav.innerHTML = `<a class="brand" href="/">C-Lab</a><span class="muted tagline">Charlie's Lab</span>
+    <button class="menu" aria-label="Open menu" aria-expanded="false"><span></span><span></span><span></span></button>
+    <div class="links">${links.map(([id, label]) => `<a href="#${esc(id)}" data-tab="${esc(id)}">${esc(label)}</a>`).join("")}
+      <button id="logout" class="secondary small">Log out</button></div>`;
+  const menu = $(".menu", nav);
+  const setOpen = (open) => {
+    nav.classList.toggle("open", open);
+    menu.setAttribute("aria-expanded", open);
+    menu.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+  };
+  menu.addEventListener("click", () => setOpen(!nav.classList.contains("open")));
+  $$(".links a", nav).forEach((a) => a.addEventListener("click", () => setOpen(false)));
+  $("#logout").addEventListener("click", () => { tokens.clear(); location.href = "/login.html"; });
+}
+
+export function setActive(id) {
+  $$("#nav .links a").forEach((a) => a.classList.toggle("active", a.dataset.tab === id));
 }
 
 export function guestPage() {

@@ -80,3 +80,23 @@ def password_fingerprint(encoded_password: str) -> str:
     # Embedded in reset tokens so they die as soon as the password changes.
     return hashlib.sha256(f"{settings.secret_key}:{encoded_password}".encode()).hexdigest()[:24]
 
+
+
+def _fernet():
+    from cryptography.fernet import Fernet
+
+    key = base64.urlsafe_b64encode(hashlib.sha256(f"seal:{settings.secret_key}".encode()).digest())
+    return Fernet(key)
+
+
+def seal(value: str) -> str:
+    """Encrypt a secret for storage (EasyEquities and Gmail app passwords)."""
+    if not value or value.startswith("enc:"):
+        return value or ""
+    return "enc:" + _fernet().encrypt(value.encode()).decode()
+
+
+def unseal(value: str) -> str:
+    if not value or not value.startswith("enc:"):
+        return value or ""
+    return _fernet().decrypt(value[4:].encode()).decode()

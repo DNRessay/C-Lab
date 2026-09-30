@@ -1,0 +1,249 @@
+from datetime import date, datetime
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.db import SessionLocal
+from app.invest.ee import mail, platform, sync
+from app.invest.ee.models import EEConnection
+from app.main import app
+from tests.test_invest import fake_fetch, register
+
+api = TestClient(app)
+FIXTURES = Path(__file__).parent / "fixtures"
+RealPlatform = platform.Platform
+
+ACC = "Test User Account: {acc} Acc. number: EE0000001-{num} Trader: Test User"
+
+SELL = ("EasyEquities Trade Tax Invoice for Afrimat Limited SHARES: (0) FSRs: (.2982) TRADE PRICE: 37.8300 "
+        "Afrimat Limited TRADED 1 : SHARES FSRs (0) (.2982) TRADE PRICE: R 37.8300 "
+        + ACC.format(acc="EasyEquities ZAR", num="1000001") +
+        " First World Trader t/a EasyEquities INVOICE NUMBER: #89473742 SUBMISSION DATE: 2025-09-08 07:10:55 "
+        "CASH SETTLEMENT DATE: 2 2025-09-15 DETAIL ZAR BROKER COMMISSION 0.02 SETTLEMENT AND ADMINISTRATION 3 0.01 "
+        "VALUE-ADDED TAX ON COSTS (VAT) 0.01 EASYMONEY CREDIT ( How do I earn credit? ) (EM 0.00) "
+        "GROSS AMOUNT DUE TO YOU 11.28 LESS COSTS 0.05 NET AMOUNT DUE TO YOU 11.23")
+USD_SELL = SELL.replace("Afrimat Limited", "Tesla Inc").replace("R 37.8300", "$ 353.6100") \
+    .replace("EasyEquities ZAR", "EasyEquities USD").replace("37.8300", "353.6100").replace("#89473742", "#89473755")
+BID = ("Hi, System The Edge YOUR BID WAS SHARES: BID PRICE: 87.206897 <= R 1.16 TRADED 1 SHARES: FSRs: TRADE PRICE: "
+       "87 .2068 R 1.00 " + ACC.format(acc="EasyProperties ZAR", num="2000002") +
+       " INVOICE NUMBER: 80678386 SUBMISSION DATE: Mon Jan 27 09:03:10 UTC 2025 SETTLEMENT DATE: 2 2025-02-06T00:00:00Z "
+       "DETAIL ZAR SETTLEMENT AND ADMINISTRATION 3 0.07 Auction Brokerage Commission Buy Charge 1.31 "
+       "VALUE-ADDED TAX ON COSTS (VAT) 0.21 TOTAL TRANSACTION COST 1.59 TRADE VALUE 87.21 TOTAL COST 88.80 "
+       "AMOUNT RESERVED 103.00 AMOUNT RETURNED TO YOU * 14.2")
+ORDER = ("Confirmation of Open Order Hyde Park House Congrats, your order has been successfully placed. Hyde Park House "
+         "OFFERING 1 SHARES: FSRs OFFER PRICE (98) (.220) >= R 1 " + ACC.format(acc="EasyProperties ZAR", num="2000002")
+         + " APPLICATION NUMBER: 93949378 SUBMISSION DATE: Thu Dec 18 07:10:56 UTC 2025 DETAIL ZAR "
+         "Auction Brokerage Commission Sell Charge 1.47 SETTLEMENT AND ADMINISTRATION 3 0.08 "
+         "VALUE-ADDED TAX ON COSTS (VAT) 0.23 GROSS EST. AMOUNT DUE TO YOU 98.22 LESS EST. COSTS 1.78 "
+         "NET EST. AMOUNT DUE TO YOU 96.44")
+DEPOSIT = ("High Five Test! You legend! Currency: EasyEquities ZAR Account number: EE0000001-1000001 Action Deposit "
+           "Amount 1,676.00 Date and time: Fri May 09 15:35:30 UTC 2025 Up next: It's time to invest!")
+WITHDRAWAL = ("High Five Test! The below withdrawal has been processed as requested. Currency: TFSA Account number: "
+              "EE0000001-1000002 Action Withdrawal Amount 37.00 Date and time: Wed Sep 17 21:28:42 UTC 2025")
+
+
+def test_html_to_text_and_real_buy_email():
+    html = (FIXTURES / "ee_trade_buy.html").read_text()
+    p = mail.parse("info@easyequities.co.za", "Confirmation of your transaction", mail.html_to_text(html), html)
+    assert p["kind"] == "trade" and p["parsed"]
+    assert (p["instrument"], p["contract_code"], p["side"]) == ("Adcock Ingram Holdings Limited", "EQU.ZA.AIP", "buy")
+    assert (p["quantity"], p["price"], p["value"], p["costs"], p["total"]) == (1.0068, 49.66, 50.0, 0.3, 50.3)
+    assert (p["account"], p["reference"], p["currency"]) == ("EasyEquities ZAR", "84809776", "ZAR")
+    assert p["date"] == datetime(2025, 5, 12, 7, 10, 5)
+
+
+@pytest.mark.parametrize("subject,text,expect", [
+    ("Confirmation of your transaction", SELL,
+     {"kind": "trade", "side": "sell", "instrument": "Afrimat Limited", "quantity": 0.2982, "price": 37.83,
+      "value": 11.28, "costs": 0.05, "total": 11.23, "reference": "89473742", "currency": "ZAR"}),
+    ("Confirmation of your transaction", USD_SELL,
+     {"kind": "trade", "side": "sell", "instrument": "Tesla Inc", "currency": "USD", "account": "EasyEquities USD"}),
+    ("Confirmation of your transaction", BID,
+     {"kind": "trade", "side": "buy", "instrument": "The Edge", "quantity": 87.2068, "price": 1.0, "value": 87.21,
+      "costs": 1.59, "total": 88.8, "account": "EasyProperties ZAR", "reference": "80678386"}),
+    ("Confirmation of Open Order Hyde Park House", ORDER,
+     {"kind": "order", "side": "sell", "instrument": "Hyde Park House", "quantity": 98.22, "value": 98.22,
+      "costs": 1.78, "total": 96.44, "reference": "93949378"}),
+    ("Confirmation of a EFT deposit.", DEPOSIT,
+     {"kind": "deposit", "value": 1676.0, "account": "EasyEquities ZAR", "currency": "ZAR"}),
+    ("Confirmation of a Withdrawal", WITHDRAWAL, {"kind": "withdrawal", "value": 37.0, "account": "TFSA"}),
+    ("Sirius Real Estate Limited (SRE) - DRIP DEC2025", "Hi Test! You hold shares in Sirius",
+     {"kind": "corporate_action", "instrument": "Sirius Real Estate Limited"}),
+    ("Scheduled Maintenance from 21-22 March", "We'll be offline", {"kind": "notice", "parsed": False}),
+])
+def test_parse_email_kinds(subject, text, expect):
+    p = mail.parse("info@easyequities.co.za", subject, text, received=datetime(2025, 1, 1))
+    for k, v in expect.items():
+        assert p[k] == pytest.approx(v) if isinstance(v, float) else p[k] == v, (k, p[k], v)
+    if expect["kind"] != "notice":
+        assert p["parsed"]
+
+
+def test_symbols_and_classes():
+    assert sync.symbol_for("EQU.ZA.AIP") == "AIP.JO"
+    assert sync.symbol_for("EQU.US.TSLA") == "TSLA"
+    assert sync.symbol_for("EQU.ZA.PROP51", account="EasyProperties ZAR") == "EE:PROP51"
+    assert sync.symbol_for("", "The Edge") == "EE:THEEDGE"
+    assert sync.asset_class_for("EasyProperties ZAR", "The Edge") == "easyproperties"
+    assert sync.asset_class_for("TFSA", "Satrix Global Balanced Fund of Funds ETF") == "etf"
+
+
+# ── Platform ────────────────────────────────────────────────────────────────
+
+OVERVIEW = """<html><body>My Investments
+<div data-id="111" data-tradingcurrencyid="2"><span id="trust-account-types">EasyEquities ZAR</span></div>
+<div data-id="222" data-tradingcurrencyid="2"><span id="trust-account-types">EasyProperties ZAR</span></div>
+</body></html>"""
+
+
+def holding_html(name, code, cost, value, price):
+    return f"""<div class="holding-inner-container">
+      <img class="instrument" src="https://resources.easyequities.co.za/logos/{code}.png">
+      <div class="equity-image-as-text">{name}</div>
+      <div class="purchase-value-cell">R{cost}</div><div class="current-value-cell">R{value}</div>
+      <div class="current-price-cell">R{price}</div>
+      <div class="collapse-container"><span data-detailviewurl="/AccountOverview/GetInstrumentDetailAction/?IsinCode=ZAE1"></span></div>
+    </div>"""
+
+
+HOLDINGS = {
+    "111": "<div class='holding-inner-container'>header</div>" + holding_html("Adcock Ingram", "EQU.ZA.AIP", "50.00", "1 050.00", "52.00"),
+    "222": "<div class='holding-inner-container'>header</div>" + holding_html("The Edge", "EQU.ZA.PROP9", "87.21", "95.00", "1.09"),
+}
+
+
+class FakeResponse:
+    def __init__(self, status=200, text="", data=None, headers=None):
+        self.status_code, self.text, self._data, self.headers = status, text, data, headers or {}
+
+    def json(self):
+        if self._data is None:
+            raise ValueError("no json")
+        return self._data
+
+
+class FakeSession:
+    def __init__(self, login_status=302, overview=OVERVIEW):
+        self.login_status, self.overview, self.account = login_status, overview, None
+
+    def post(self, url, data=None, **kw):
+        if url.endswith(platform.SIGN_IN):
+            return FakeResponse(self.login_status, "sign in page", headers={"location": "/Dashboard"})
+        self.account = data["trustAccountId"]
+        return FakeResponse(200)
+
+    def get(self, url, **kw):
+        if url.endswith(platform.OVERVIEW):
+            return FakeResponse(200, self.overview)
+        if "GetHoldingsView" in url:
+            return FakeResponse(200, HOLDINGS[self.account])
+        if "GetInstrumentDetailAction" in url:
+            return FakeResponse(200, "<div>#Shares</div><div>1</div><div>#FSR</div><div>.0068</div>")
+        if "Valuations" in url:
+            return FakeResponse(200, data='{"TopSummary": {"AccountValue": "R1 100.00"}}')
+        if "GetTransactions" in url:
+            return FakeResponse(200, data=[{"TransactionId": 1, "Action": "Buy"}])
+        return FakeResponse(404)
+
+
+def test_platform_parsers():
+    assert [a["name"] for a in platform.parse_accounts(OVERVIEW)] == ["EasyEquities ZAR", "EasyProperties ZAR"]
+    rows = platform.parse_holdings(HOLDINGS["111"])
+    assert rows[0]["contract_code"] == "EQU.ZA.AIP" and rows[0]["current_value"] == 1050.0
+    assert platform.parse_shares("<div>#Shares</div><div>12</div><div>#FSR</div><div>.5</div>") == 12.5
+    assert platform.money("-R2 000.50") == -2000.5
+
+
+def test_snapshot_and_login_failure():
+    snap = platform.snapshot("u", "p", client=platform.Platform(session=FakeSession()))
+    eq, prop = snap["accounts"]
+    assert eq["value"] == 1100.0 and eq["holdings"][0]["shares"] == 1.0068
+    assert prop["holdings"][0]["name"] == "The Edge" and prop["value"] == 1100.0
+    with pytest.raises(platform.PlatformError) as e:
+        platform.snapshot("u", "bad", client=platform.Platform(session=FakeSession(login_status=200)))
+    assert e.value.stage == "login"
+    with pytest.raises(platform.PlatformError) as e:
+        platform.snapshot("u", "p", client=platform.Platform(session=FakeSession(overview="<html>new layout</html>")))
+    assert e.value.stage == "accounts" and "new layout" in e.value.page
+
+
+# ── End to end through the API ──────────────────────────────────────────────
+
+def fake_messages():
+    buy = (FIXTURES / "ee_trade_buy.html").read_text()
+    msgs = [
+        ("m1", "Confirmation of your transaction", "", buy, datetime(2025, 5, 12, 7, 11)),
+        ("m2", "Confirmation of a EFT deposit.", DEPOSIT, "", datetime(2025, 5, 9, 15, 36)),
+        ("m3", "Confirmation of your transaction", BID, "", datetime(2025, 1, 27, 9, 4)),
+        ("m4", "Confirmation of Open Order Hyde Park House", ORDER, "", datetime(2025, 12, 18, 7, 11)),
+        ("m5", "Sirius Real Estate Limited (SRE) - DRIP DEC2025", "You hold shares in Sirius", "",
+         datetime(2025, 12, 11, 3, 32)),
+    ]
+    out = [{"uid": i + 1, "message_id": mid, "sender": "info@easyequities.co.za", "subject": s, "received": r,
+            "html": h, "text": t or mail.html_to_text(h)} for i, (mid, s, t, h, r) in enumerate(msgs)]
+    out.append({"uid": 9, "message_id": "promo", "sender": "noreply@easyequities.co.za", "subject": "SpaceX!",
+                "received": datetime(2026, 6, 1), "html": "", "text": "buy now"})
+    return out
+
+
+@pytest.fixture
+def market(monkeypatch):
+    from app.invest import prices
+
+    monkeypatch.setattr(prices, "fetch", fake_fetch)
+    monkeypatch.setattr(mail, "fetch", lambda *a, **k: (fake_messages(), 9, "1"))
+    monkeypatch.setattr(platform, "Platform", lambda base_url=platform.BASE_URL: RealPlatform(base_url, FakeSession()))
+
+
+def test_connect_sync_and_portfolio(market):
+    h = register("eeuser")
+    r = api.put("/api/ee/mail", headers=h, json={"address": "me@gmail.com", "app_password": "abcd efgh ijkl mnop"})
+    assert r.status_code == 200, r.text
+    assert r.json()["mail"]["status"] == "ok"
+
+    mails = api.get("/api/ee/mails", headers=h).json()
+    assert sorted(m["kind"] for m in mails) == ["corporate_action", "deposit", "order", "trade", "trade"]
+    txns = api.get("/api/invest/transactions", headers=h).json()
+    kinds = sorted((t["kind"], t["symbol"]) for t in txns)
+    assert kinds == [("buy", "AIP.JO"), ("buy", "EE:THEEDGE"), ("deposit", "")]  # orders/notices aren't trades
+
+    r = api.put("/api/ee/platform", headers=h, json={"username": "me", "password": "secret"})
+    body = r.json()
+    assert body["platform"]["status"] == "ok", body
+    assert [a["name"] for a in body["accounts"]] == ["EasyEquities ZAR", "EasyProperties ZAR"]
+    db = SessionLocal()
+    conn = db.query(EEConnection).one()
+    assert conn.password.startswith("enc:") and conn.mail_password.startswith("enc:")
+    db.close()
+
+    s = api.get("/api/invest/summary", headers=h).json()
+    aip = next(x for x in s["holdings"] if x["symbol"] == "AIP.JO")
+    assert aip["price"] == 52.0 and aip["price_source"].startswith("EasyEquities")
+    assert s["easyequities"]["value"] == 2200.0
+
+    # A second sync adds nothing twice; re-reading emails is idempotent too.
+    api.post("/api/ee/sync", headers=h)
+    assert len(api.get("/api/invest/transactions", headers=h).json()) == 3
+    assert api.post("/api/ee/reparse", headers=h).json() == {"emails": 5, "parsed": 5, "imported": 0}
+
+    ca = next(m for m in mails if m["kind"] == "corporate_action")
+    assert api.patch(f"/api/ee/mails/{ca['id']}", headers=h, json={"done": True}).json()["done"] is True
+    assert "Sirius" in api.get(f"/api/ee/mails/{ca['id']}", headers=h).json()["body"]
+
+
+def test_failed_sync_keeps_last_snapshot(market, monkeypatch):
+    h = register("eeuser")
+    api.put("/api/ee/platform", headers=h, json={"username": "me", "password": "secret"})
+    monkeypatch.setattr(platform, "Platform",
+                        lambda base_url=platform.BASE_URL: RealPlatform(base_url, FakeSession(login_status=200)))
+    body = api.post("/api/ee/sync", headers=h).json()
+    assert body["platform"]["status"] == "error" and body["platform"]["error_stage"] == "login"
+    assert len(body["accounts"]) == 2  # still showing the last good read
+
+
+def test_other_users_cannot_see_mail(market):
+    register("eeuser")
+    other = register("nosy")
+    assert api.get("/api/ee/mails", headers=other).json() == []
+    assert api.get("/api/ee/mails/1", headers=other).status_code == 404

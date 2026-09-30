@@ -106,4 +106,15 @@ export const api = {
   addProperty: (b) => post("/api/invest/properties", b),
   updateProperty: (id, b) => put(`/api/invest/properties/${id}`, b),
   deleteProperty: (id) => del(`/api/invest/properties/${id}`),
+
+  ee: () => get("/api/ee"),
+  eeConnectPlatform: (b) => put("/api/ee/platform", b),
+  eeDisconnectPlatform: () => del("/api/ee/platform"),
+  eeConnectMail: (b) => put("/api/ee/mail", b),
+  eeDisconnectMail: () => del("/api/ee/mail"),
+  eeSync: () => post("/api/ee/sync"),
+  eeReparse: () => post("/api/ee/reparse"),
+  eeMails: (kind = "") => get(`/api/ee/mails${qs({ kind })}`),
+  eeMail: (id) => get(`/api/ee/mails/${id}`),
+  eeUpdateMail: (id, b) => patch(`/api/ee/mails/${id}`, b),
 };

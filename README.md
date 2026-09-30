@@ -15,6 +15,10 @@ frontend/   Plain HTML/CSS/JS on Cloudflare Pages (no build step)
 - **Holdings:** entered by hand or imported from CSV. Anything without a market price (e.g. EasyProperties) can be priced by hand.
 - **Watchlist:** JSE shares and REITs with moves, dividend yield and 52-week range. Price alerts are emailed nightly at 18:00 SAST.
 - **Property:** value, bond, equity, loan-to-value, gross and net yield, monthly cash flow and growth per year.
+- **EasyEquities:** two independent feeds, so one keeps working if the other breaks.
+  - **Login sync:** reads every account (including EasyProperties) and its holdings at EasyEquities' own prices, nightly and on "Sync now". It uses an unofficial client kept in `backend/app/invest/ee/platform.py` (adapted from easy-equities-client 0.5.0), so it can be patched here when EasyEquities changes their site. A failed sync keeps the last good read and says which step broke.
+  - **Email reader:** reads mail from easyequities.co.za over IMAP with a Gmail app password. Trade invoices, deposits and withdrawals become transactions; EasyProperties orders and corporate actions (dividend choices, schemes) are listed, with the ones needing a decision on top. Every email's text is kept, so after a parser fix "Re-read all emails" applies it to old mail.
+  - Passwords are stored encrypted with a key derived from `SECRET_KEY`.
 
 Prices come from Yahoo's public chart feed. JSE quotes arrive in cents and are shown in rand.
 

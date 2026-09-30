@@ -11,6 +11,7 @@ from . import auth
 from .config import settings
 from .db import SessionLocal, init_db
 from .invest import markets
+from .invest.ee.router import router as ee_router
 from .invest.router import router as invest_router
 
 logging.getLogger().setLevel(logging.INFO)
@@ -48,7 +49,7 @@ async def unhandled(request: Request, exc: Exception):
     return JSONResponse({"detail": "Internal server error."}, status_code=500)
 
 
-for r in (auth.router, invest_router, markets.router):
+for r in (auth.router, invest_router, markets.router, ee_router):
     app.include_router(r)
 
 
@@ -68,14 +69,23 @@ def health():
 _asgi = Mangum(app, lifespan="off")
 
 
-# Lambda entrypoint: app.main.handler. The nightly EventBridge schedule calls it too, to send price alerts.
+# Lambda entrypoint: app.main.handler. The nightly EventBridge schedule calls it too:
+# EasyEquities sync first (so prices are fresh), then price alerts.
 def handler(event, context):
     if isinstance(event, dict) and event.get("source") == "aws.events":
         from .invest.alerts import check_all
+        from .invest.ee.sync import sync_all
 
         db = SessionLocal()
         try:
-            return {"alerts_sent": check_all(db)}
+            result = {}
+            try:
+                result["easyequities_synced"] = sync_all(db)
+            except Exception:
+                logging.exception("Nightly EasyEquities sync failed")
+                db.rollback()
+            result["alerts_sent"] = check_all(db)
+            return result
         finally:
             db.close()
     return _asgi(event, context)

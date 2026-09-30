@@ -6,6 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import prices
+from .ee.models import EEConnection
+from .ee.sync import platform_view
 from .models import InvestTxn, ManualPrice, PropertyAsset
 
 ZERO = Decimal(0)
@@ -85,6 +87,8 @@ def summary(db: Session, user_id: int):
     txns = list(db.scalars(select(InvestTxn).where(InvestTxn.user_id == user_id)
                            .order_by(InvestTxn.date, InvestTxn.id)))
     manual = {m.symbol: m for m in db.scalars(select(ManualPrice).where(ManualPrice.user_id == user_id))}
+    conn = db.scalar(select(EEConnection).where(EEConnection.user_id == user_id))
+    ee_view, ee_prices = platform_view(db, conn) if conn and conn.snapshot else (None, {})
 
     rows, total_value, total_cost = [], 0.0, 0.0
     for symbol, p in holdings(txns).items():
@@ -93,7 +97,9 @@ def summary(db: Session, user_id: int):
         source, price = "none", None
         if symbol in manual:
             price, source = float(manual[symbol].price), f"manual ({manual[symbol].as_of})"
-        else:
+        elif symbol in ee_prices:
+            price, source = ee_prices[symbol], f"EasyEquities ({ee_view['taken_at'][:10]})"
+        elif not symbol.startswith("EE:"):  # EE: symbols (EasyProperties etc.) aren't on Yahoo
             q = prices.quote(db, symbol)
             if q and q.price is not None:
                 price, source = float(q.price), "market"
@@ -147,6 +153,9 @@ def summary(db: Session, user_id: int):
         "properties": props,
         "property_equity": sum(p["equity"] for p in props),
         "net_worth": portfolio_value + sum(p["equity"] for p in props),
+        "easyequities": {"value": ee_view["value_zar"], "taken_at": ee_view["taken_at"],
+                         "accounts": [{"name": a["name"], "value_zar": a["value_zar"]} for a in ee_view["accounts"]]}
+        if ee_view else None,
     }
 
 
