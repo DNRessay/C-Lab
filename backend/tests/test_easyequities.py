@@ -171,13 +171,20 @@ STATEMENT_PAGE = """<html><title>Statements</title><div class="panel"><h4>EasyEq
 </div></html>"""
 PDF = b"%PDF-1.4 fake statement"
 
-# What the EasyProperties API is guessed to return (holding + property per row, prices in cents).
-EP_REPLY = {"trustAccount": {"holdings": [
-    {"property": {"title": "The Edge", "contractCode": "EQU.ZA.PROP9", "financialInfo": {"rentalYield": 0.44}},
-     "holding": {"quantity": 87.2068, "lastPrice": 135.0, "vwap": 100.0}},
-    {"property": {"title": "Four on O - Sea Point", "financialInfo": {"rentalYield": 0.89}},
-     "holding": {"quantity": 150, "lastPrice": 132.007, "vwap": 98.21}},
-]}}
+# The EasyProperties API as the EasyProperties app uses it (prices in cents).
+import base64 as _b64, json as _json  # noqa: E402
+TOKEN = "h." + _b64.urlsafe_b64encode(_json.dumps({"userid": 4242}).encode()).decode().rstrip("=") + ".sig"
+EP_ACCOUNTS = [{"trustAccountId": 111, "tradingCurrencyId": 2}, {"trustAccountId": 555, "tradingCurrencyId": 66}]
+EP_ACCOUNT = {"trustAccountId": 555, "trustAccountValue": 316.0, "properties": [
+    {"property": {"id": 9}, "quantity": 87.2068, "vwap": 100.0},
+    {"property": {"id": 12}, "quantity": 150, "vwap": 98.21},
+]}
+EP_CATALOGUE = [
+    {"id": 9, "name": "The Edge", "contractCode": "EQU.ZA.PROP9", "financialInfo": {"sharePrice": 135.0, "rentalYieldPercentage": 0.44}},
+    {"id": 12, "name": "Four on O - Sea Point", "contractCode": "EQU.ZA.PROP12",
+     "financialInfo": {"sharePrice": 132.007, "rentalYieldPercentage": 0.89}},
+    {"id": 99, "name": "Not mine", "financialInfo": {"sharePrice": 100}},
+]
 LOGIN_PAGE = """<html><title>Log in | EasyID</title><form id="loginForm" method="post" action="">
 <input name="ReturnUrl" value="/connect/authorize/callback?x=1"><input name="ClientIdForProperties" value="">
 <input name="Response" value=""><input name="Username"><input name="IsUsernameProvided" value="false">
@@ -196,14 +203,21 @@ class FakeIdpSession:
         if "/connect/authorize/callback" in url:
             return FakeResponse(302, headers={"location": properties.REDIRECT + "?code=abc&state=x"})
         if url.startswith(properties.API):
-            assert headers["Authorization"] == "Bearer tok"
-            return FakeResponse(200, data=EP_REPLY) if url.endswith("/user/account") else FakeResponse(404)
+            assert headers["Authorization"] == f"Bearer {TOKEN}"
+            if url.endswith("/user/accounts/4242"):
+                return FakeResponse(200, data=EP_ACCOUNTS)
+            if url.endswith("/property/all"):
+                return FakeResponse(200, data=EP_CATALOGUE)
+            return FakeResponse(403, "forbidden")
         return FakeResponse(404)
 
     def post(self, url, data=None, json=None, **kw):
         if url.endswith("/user/accesstoken"):
             self.sent["token"] = json
-            return FakeResponse(200, data={"accessToken": "tok", "refreshToken": "r"})
+            return FakeResponse(200, data={"access_token": TOKEN, "id_token": "i", "refresh_token": "r"})
+        if url.endswith("/user/account"):
+            self.sent["account"] = json
+            return FakeResponse(200, data=EP_ACCOUNT)
         self.sent["login"] = data
         if not self.accept:
             return FakeResponse(200, "<form id='loginForm'>Invalid username or password</form>")
@@ -227,11 +241,12 @@ def test_easyproperties_login_and_holdings():
     assert idp.sent["login"]["Username"] == "me" and idp.sent["login"]["__RequestVerificationToken"] == "csrf"
     assert idp.sent["login"]["button"] == "login"  # otherwise EasyID answers access_denied
     assert idp.sent["token"]["authorizationCode"] == "abc" and idp.sent["token"]["codeVerifier"]
+    assert idp.sent["account"] == {"userId": 4242, "trustAccountId": "555"}  # the rand (66) account
     edge, four = ep["holdings"]
     assert (edge["name"], edge["shares"], edge["contract_code"]) == ("The Edge", 87.2068, "EQU.ZA.PROP9")
     assert edge["current_value"] == pytest.approx(117.73, abs=0.01) and edge["purchase_value"] == pytest.approx(87.21, abs=0.01)
     assert four["rental_yield"] == pytest.approx(0.0089)
-    assert ep["shapes"]["/user/account"]["trustAccount"]["holdings"][1] == "x2"  # keys only, no values
+    assert ep["shapes"]["user/account"]["properties"][1] == "x2"  # keys only, no values
     with pytest.raises(platform.PlatformError) as e:
         REAL_EP_FETCH("me", "wrong", session=FakeIdpSession(accept=False))
     assert e.value.stage == "easyproperties login"

@@ -2,6 +2,7 @@
 # the same flow the EasyProperties site runs in the browser. Values below come from that site's public app bundle.
 import base64
 import hashlib
+import json
 import re
 import secrets
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse
@@ -15,7 +16,7 @@ IDP = "https://identity.openeasy.io"
 CLIENT_ID = "33e0a18d2e654488bfb950170d258988"
 SCOPE = "openid platform profile ep_userinfo api_gateway auction_rest_api account_api properties_api referrals_api"
 REDIRECT = "https://platform.easyproperties.co.za/account/authorize"
-DATA_PATHS = ["/user/account", "/user/accounts/", "/property/all"]
+EP_CURRENCY_ID = 66  # the EasyProperties rand account, as the EasyProperties app picks it
 
 
 def _pkce():
@@ -170,20 +171,99 @@ def extract_holdings(*replies):
     return out
 
 
+def jwt_claims(token):
+    try:
+        part = token.split(".")[1]
+        return json.loads(base64.urlsafe_b64decode(part + "=" * (-len(part) % 4)))
+    except Exception:
+        return {}
+
+
+def _items(detail):
+    """The account's property holdings: `properties` in the EasyProperties app, or any list of dicts naming a property."""
+    if isinstance(detail, dict):
+        for key in ("properties", "holdings", "propertyHoldings"):
+            if isinstance(detail.get(key), list):
+                return detail[key]
+    for d in _walk(detail):
+        for v in d.values():
+            if isinstance(v, list) and v and isinstance(v[0], dict) and ("property" in v[0] or "propertyId" in v[0]):
+                return v
+    return []
+
+
+def _cents_to_rand(v):
+    # EasyProperties quotes share prices in cents (IPOs list at 100c = R1).
+    return v / 100 if v is not None and v > 10 else v
+
+
+def holdings_from_account(detail, catalogue):
+    by_id = {str(p.get("id")): p for p in catalogue or [] if isinstance(p, dict)}
+    out = []
+    for item in _items(detail):
+        prop = item.get("property") if isinstance(item.get("property"), dict) else {}
+        pid = str(prop.get("id") or item.get("propertyId") or "")
+        cat = by_id.get(pid, {})
+        fin = cat.get("financialInfo") if isinstance(cat.get("financialInfo"), dict) else {}
+        h = item.get("holding") if isinstance(item.get("holding"), dict) else item
+        name = _pick(cat, "name", "title") or _pick(prop, "name", "title") or _pick(item, "name", "title")
+        qty = _num(_pick(h, "quantity", "shares", "totalShares", "numberOfShares", "units", "sharesHeld", "volume",
+                         "availableShares"))
+        if not name or not qty:
+            continue
+        price = _cents_to_rand(_num(_pick(h, "lastPrice", "currentPrice", "price") or _pick(fin, "sharePrice")))
+        value = _num(_pick(h, "currentValue", "marketValue", "value", "totalValue", "holdingValue"))
+        if value is None and price is not None:
+            value = qty * price
+        cost = _num(_pick(h, "purchaseValue", "costValue", "totalCost", "cost", "investmentValue"))
+        vwap = _cents_to_rand(_num(_pick(h, "vwap", "averagePrice", "avgPrice")))
+        if cost is None and vwap is not None:
+            cost = qty * vwap
+        yld = _num(_pick(fin, "rentalYieldPercentage", "grossRentalYieldPercentage") or _pick(prop, "rentalYield"))
+        out.append({"name": str(name)[:200], "contract_code": str(_pick(cat, "contractCode") or _pick(prop, "contractCode") or ""),
+                    "shares": qty, "current_value": value, "purchase_value": cost,
+                    "current_price": value / qty if value is not None else price,
+                    # Yields run 0-3%: 0.89 means 0.89%, while a fraction would be tiny (0.0089).
+                    "rental_yield": (yld / 100 if yld is not None and yld >= 0.05 else yld), "view_url": "", "isin": ""})
+    return out
+
+
 def fetch(username, password, session=None):
-    """Your EasyProperties holdings, plus the reply structure (keys only) for debugging."""
+    """Your EasyProperties holdings, the way the EasyProperties app loads them. Also returns reply shapes (keys only)."""
     s, token = login(username, password, session)
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
-    replies, shapes = [], {}
-    for path in DATA_PATHS:
+    shapes = {}
+
+    def call(method, path, **kw):
         try:
-            r = s.get(API + path, headers=headers, timeout=30)
-            data = r.json() if r.status_code == 200 else None
+            r = (s.post if method == "post" else s.get)(API + path, headers=headers, timeout=30, **kw)
         except Exception as e:
-            shapes[path] = f"error: {str(e)[:120]}"
-            continue
-        shapes[path] = shape(data) if data is not None else f"HTTP {r.status_code}"
-        if data is not None:
-            replies.append(data)
-    holdings = extract_holdings(*replies)
-    return {"holdings": holdings, "source": "api", "shapes": shapes}
+            raise PlatformError("easyproperties api", f"{path}: request failed ({e})")
+        if r.status_code != 200:
+            shapes[path] = f"HTTP {r.status_code}"
+            raise PlatformError("easyproperties api", f"{path}: HTTP {r.status_code}", r.text)
+        data = r.json()
+        shapes[path.split("/")[1] + "/" + path.split("/")[2] if path.count("/") > 1 else path] = shape(data)
+        return data
+
+    user_id = jwt_claims(token).get("userid")
+    if not user_id:
+        try:
+            user_id = s.get(f"{IDP}/connect/userinfo", headers=headers, timeout=30).json().get("userid")
+        except Exception:
+            user_id = None
+    if not user_id:
+        raise PlatformError("easyproperties api", "no userid in the EasyID token or userinfo")
+    accounts = call("get", f"/user/accounts/{user_id}")
+    accounts = accounts if isinstance(accounts, list) else _pick(accounts, "trustaccounts", "accounts") or []
+    ep = next((a for a in accounts if str(a.get("tradingCurrencyId")) == str(EP_CURRENCY_ID)), accounts[0] if accounts else None)
+    if not ep:
+        raise PlatformError("easyproperties api", "no EasyProperties account found")
+    detail = call("post", "/user/account", json={"userId": user_id, "trustAccountId": str(ep.get("trustAccountId"))})
+    try:
+        catalogue = call("get", "/property/all")
+    except PlatformError:
+        catalogue = []
+    holdings = holdings_from_account(detail, catalogue) or extract_holdings(detail)
+    return {"holdings": holdings, "source": "api", "shapes": shapes,
+            "account_value": _num(_pick(detail, "trustAccountValue")) if isinstance(detail, dict) else None}
