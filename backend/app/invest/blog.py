@@ -86,7 +86,7 @@ def _date(groups) -> Optional[date]:
 def kind_of(title: str, url: str) -> str:
     t = f"{title} {url}".lower()
     if "dividend" in t and ("list" in t or re.search(r"(january|february|march|april|may|june|july|august|september|"
-                                                     r"october|november|december) \d{4} dividends", t)):
+                                                     r"october|november|december) (\d{4} )?(etf |etn |etn-etf )?dividends", t)):
         return "monthly_dividends"
     if "dividend" in t:
         return "weekly_dividends"
@@ -147,7 +147,88 @@ def clean_name(s: str) -> str:
     return re.sub(r"\s{2,}", " ", s).strip(" :-–—|,")
 
 
+REGIONS = {"south africa": "ZAR", "united states": "USD", "usa": "USD", "australia": "AUD", "united kingdom": "GBP",
+           "uk": "GBP", "europe": "EUR", "germany": "EUR", "netherlands": "EUR", "france": "EUR", "botswana": "ZAR"}
+PAYING_RE = re.compile(r"^(?P<name>.+?)\s+will\s+be\s+paying\s+(?P<amt>(?:R|US\$|\$|A\$|£|€)\s?\d[\d,]*(?:\.\d+)?|\d[\d,]*(?:\.\d+)?\s*"
+                       r"(?:thebe|cents?|c|pula|usd|zar))\s*(?:\([^)]*\))?\s*per\s+(?P<unit>.+?)\.?$", re.I)
+DATED_RE = re.compile(r"^(last\s+(?:trading|payment|day\s+to\s+trade)\s*(?:date|day)?|ldt|payment\s+date|pay\s+date|record\s+date|"
+                      r"exchange\s+rate\s+date)\s*[-:–]\s*(" + DATE + ")", re.I)
+PUBLISHED_RE = re.compile(r"published\s+on:?\s*([A-Za-z]{3,9})\s+(\d{1,2}),\s*(\d{4})", re.I)
+
+
+def published_from(lines):
+    for ln in lines[:15]:
+        m = PUBLISHED_RE.search(ln)
+        if m and MONTHS.get(m.group(1)[:3].lower()):
+            return date(int(m.group(3)), MONTHS[m.group(1)[:3].lower()], int(m.group(2)))
+    return None
+
+
+def highlights(lines):
+    """The intro above the list: what EasyEquities thinks matters this week/month."""
+    start = next((i + 1 for i, ln in enumerate(lines[:15]) if PUBLISHED_RE.search(ln)), 0)
+    out = []
+    for ln in lines[start:]:
+        if PAYING_RE.match(ln) or ln.lower().rstrip(":") in REGIONS or re.match(r"here.s (the full update|how much)", ln, re.I):
+            break
+        if len(ln) > 12:
+            out.append(ln)
+    return out[:12]
+
+
+def parse_blocks(lines):
+    """EasyEquities' layout: 'X will be paying R1.23 per share.' then 'Last trading date - 14 April 2026' and
+    'Payment date - 20 April 2026' lines, grouped under region headings (South Africa, United States...)."""
+    account, found, cur = "ZAR", [], None
+    for ln in lines:
+        low = ln.lower().strip(" :")
+        if low in REGIONS:
+            account = REGIONS[low]
+            continue
+        acc = ACCOUNT_RE.search(ln)
+        if acc and len(ln) < 40:
+            account = acc.group(1).upper()
+            continue
+        m = PAYING_RE.match(ln)
+        if m:
+            amt = m.group("amt")
+            num = float(re.sub(r"[^\d.]", "", amt.replace(",", "")) or 0)
+            sym = amt.strip()[:2].upper()
+            if re.search(r"thebe", amt, re.I):
+                value, currency = num / 100, "BWP"
+            elif re.search(r"\d\s*(cents?|c)\s*$", amt, re.I):
+                value, currency = round(num / 100, 6), "ZAR"
+            else:
+                currency = ("USD" if "$" in amt and not sym.startswith("A") else "AUD" if sym.startswith("A$") else
+                            "GBP" if "£" in amt else "EUR" if "€" in amt else "ZAR")
+                value = num
+            unit = m.group("unit").strip()
+            name = m.group("name").strip()
+            if not re.fullmatch(r"(ordinary\s+)?(share|unit|participatory interest)s?", unit, re.I):
+                name = f"{name} ({unit})"
+            cur = {"account": account, "instrument": clean_name(name), "amount": value, "currency": currency,
+                   "ldt": None, "pay_date": None, "line": ln[:500]}
+            found.append(cur)
+            continue
+        d = DATED_RE.match(ln)
+        if d and cur:
+            when = _date(d.groups()[2:])
+            label = d.group(1).lower()
+            if label.startswith("payment") or label.startswith("pay"):
+                cur["pay_date"] = when
+            elif label.startswith("last"):  # 'Last payment date' is their typo for last trading date
+                cur["ldt"] = when
+    return found
+
+
 def parse_dividends(lines, year_hint=None):
+    blocks = parse_blocks(lines)
+    if blocks:
+        return blocks
+    return parse_lines(lines)
+
+
+def parse_lines(lines):
     """Each line naming an instrument with an amount and dates. Account sections (ZAR/USD Account headings) carry over;
     table rows whose dates sit in separate cells work too."""
     account, found, header = "ZAR", [], None
@@ -196,8 +277,10 @@ def save_post(db: Session, url: str, html: str):
     lines = lines_of(main)
     post.title, post.kind = title[:300], kind_of(title, url)
     post.body = "\n".join(lines)
-    post.summary = next((ln for ln in lines if len(ln) > 80), "")[:600]
+    hl = highlights(lines)
+    post.summary = "\n".join(hl)[:2000] if hl else next((ln for ln in lines if len(ln) > 80), "")[:600]
     items = parse_dividends(lines) if post.kind != "news" else []
+    published = published or published_from(lines)
     if not published:
         dates = [d for i in items for d in (i["ldt"], i["pay_date"]) if d]
         published = min(dates) - timedelta(days=3) if dates else utcnow().date()
@@ -258,6 +341,8 @@ def matcher(names_and_symbols):
         keys.append((kind, symbol, n, base))
 
     def match(instrument):
+        if re.search(r"preference|debenture|note\b", instrument, re.I):
+            return None
         n = norm(instrument)
         tokens = set(re.findall(r"\b[A-Z0-9]{2,6}\b", instrument))
         for kind, symbol, key, base in keys:

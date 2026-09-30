@@ -77,3 +77,43 @@ def test_blog_on_overview_and_watchlist(market, monkeypatch):
     assert (grt["mine"], grt["symbol"], grt["can_buy"]) == ("watch", "GRT.JO", True)
     s = api.get("/api/invest/summary", headers=h).json()
     assert s["blog"]["upcoming"] and s["blog"]["posts"]
+
+
+REAL_WEEKLY = """<html><head><title>Weekly Dividends Update</title></head><body><div class="post-body">
+<p>Published on: Apr 13, 2026, 8:00:00 AM</p>
+<p>Dividend Aristocrats have historically stood out for their consistency and long-term dividend growth.</p>
+<p>South Africa</p>
+<p>The JSE Group Limited will be paying R10.61 (R9.61 Ordinary and R1.00 Special) per share.</p>
+<p>Last trading date - 14 April 2026</p><p>Payment date - 20 April 2026</p>
+<p>Standard Bank Group Limited will be paying R3.93 per second preference share (SBPP).</p>
+<p>Last trading date - 14 April 2026</p><p>Payment date - 20 April 2026</p>
+<p>Choppies Enterprises Limited will be paying 1.0 thebe per share.</p>
+<p>Exchange rate date - 13 April 2026</p><p>Last trading date - 14 April 2026</p><p>Payment date - 29 April 2026</p>
+<p>TBI Global Targeted Yield ETF will be paying R0.33 per share.</p>
+<p>Last payment date -10 March 2026</p><p>Payment date - 16 March 2026</p>
+<p>United States</p>
+<p>Freeport-McMoRan Inc will be paying $0.15 ( $0.075 Base and $0.075 Variable) per share.</p>
+<p>Last trading date - 14 April 2026</p><p>Payment date - 01 May 2026</p>
+</div></body></html>"""
+
+
+def test_parse_real_layout():
+    _, _, main = blog.content(REAL_WEEKLY)
+    lines = blog.lines_of(main)
+    assert blog.published_from(lines) == date(2026, 4, 13)
+    assert blog.highlights(lines) == ["Dividend Aristocrats have historically stood out for their consistency and long-term dividend growth."]
+    rows = blog.parse_dividends(lines)
+    assert [(r["account"], r["instrument"], r["amount"], r["currency"], r["ldt"], r["pay_date"]) for r in rows] == [
+        ("ZAR", "The JSE Group Limited", 10.61, "ZAR", date(2026, 4, 14), date(2026, 4, 20)),
+        ("ZAR", "Standard Bank Group Limited (second preference share (SBPP))", 3.93, "ZAR", date(2026, 4, 14), date(2026, 4, 20)),
+        ("ZAR", "Choppies Enterprises Limited", 0.01, "BWP", date(2026, 4, 14), date(2026, 4, 29)),
+        ("ZAR", "TBI Global Targeted Yield ETF", 0.33, "ZAR", date(2026, 3, 10), date(2026, 3, 16)),
+        ("USD", "Freeport-McMoRan Inc", 0.15, "USD", date(2026, 4, 14), date(2026, 5, 1))]
+    assert blog.kind_of("September 2026 Dividends Update: JSE-Listed Companies", "") == "monthly_dividends"
+    assert blog.kind_of("March 2026 ETF Dividends List: Satrix", "") == "monthly_dividends"
+    assert blog.kind_of("Sanlam's latest results are in", "") == "news"
+    m = blog.matcher([("hold", "SBK.JO", "Standard Bank Group Ltd"), ("watch", "GRT.JO", "Growthpoint Properties Ltd")])
+    assert m("Standard Bank Group Limited") == ("hold", "SBK.JO")
+    assert m("Growthpoint Properties Limited") == ("watch", "GRT.JO")
+    assert m("Grindrod Limited") is None
+    assert m("Standard Bank Group Limited (second preference share (SBPP))") is None

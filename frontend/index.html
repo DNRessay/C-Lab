@@ -1240,7 +1240,8 @@
       $("#cnt-blog").textContent = b.posts.length;
       $("#blog-posts").innerHTML = b.posts.map(p => `<a class="card" href="${esc(p.url)}" target="_blank" rel="noopener">
         <strong>${esc(p.title)}</strong><br><small class="muted">${dayOr(p.published)}${p.items ? ` · ${p.items} dividends` : ""}</small>
-        ${p.summary ? `<p class="muted" style="margin:0.4rem 0 0">${esc(p.summary.slice(0, 180))}${p.summary.length > 180 ? "…" : ""}</p>` : ""}</a>`).join("");
+        ${p.summary ? `<ul class="muted blog-points">${p.summary.split("\n").slice(0, 5).map(l => `<li>${esc(l.length > 200 ? l.slice(0, 199) + "…" : l)}</li>`).join("")}</ul>` : ""}</a>`).join("");
+      $("#blog-posts-wrap").open = b.posts.length > 0;
     }
     async function loadPicks() {
       const b = await api.blog();
