@@ -17,7 +17,7 @@ frontend/   Plain HTML/CSS/JS on Cloudflare Pages (no build step)
 - **Property:** value, bond, equity, loan-to-value, gross and net yield, monthly cash flow and growth per year.
 - **EasyEquities:** two independent feeds, so one keeps working if the other breaks.
   - **Login sync:** reads every account (including EasyProperties) and its holdings at EasyEquities' own prices, nightly and on "Sync now". It uses an unofficial client kept in `backend/app/invest/ee/platform.py` (adapted from easy-equities-client 0.5.0), so it can be patched here when EasyEquities changes their site. A failed sync keeps the last good read and says which step broke.
-  - **Email reader:** reads mail from easyequities.co.za over IMAP with a Gmail app password. Trade invoices, deposits and withdrawals become transactions; EasyProperties orders and corporate actions (dividend choices, schemes) are listed, with the ones needing a decision on top. Every email's text is kept, so after a parser fix "Re-read all emails" applies it to old mail.
+  - **Email reader:** "Sign in with Google" gives read-only access; C-Lab reads mail from easyequities.co.za through the Gmail API. Trade invoices, deposits and withdrawals become transactions; EasyProperties orders and corporate actions (dividend choices, schemes) are listed, with the ones needing a decision on top. Every email's text is kept, so after a parser fix "Re-read all emails" applies it to old mail.
   - Passwords are stored encrypted with a key derived from `SECRET_KEY`.
 
 Prices come from Yahoo's public chart feed. JSE quotes arrive in cents and are shown in rand.
@@ -42,6 +42,7 @@ Every push to `main` runs `.github/workflows/deploy.yml`. It runs the tests, dep
 **Repo secrets:**
 - Required: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLAB_DATABASE_URL`. `CLAB_DATABASE_URL` should point to its **own** Neon database.
 - Optional, for alert emails: `EMAIL_HOST`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`.
+- Optional, for "Sign in with Google" (EasyEquities emails): `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (or `CLAB_`-prefixed). In Google Cloud: enable the Gmail API, add the `gmail.readonly` scope to the OAuth consent screen, and add `<API URL>/api/ee/google/callback` as an authorised redirect URI on a Web OAuth client. Keep the consent screen "In production": in "Testing", Google expires the sign-in after 7 days.
 
 **Optional repo variable:** `SIGNUP_EMAILS`.
 
