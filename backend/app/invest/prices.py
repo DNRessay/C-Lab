@@ -12,7 +12,14 @@ from .models import PriceCache
 
 log = logging.getLogger(__name__)
 
-CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{}"
+try:
+    # Yahoo rate-limits plain Python TLS clients (429); a browser-like handshake gets through.
+    from curl_cffi import requests as http
+    HTTP_KW = {"impersonate": "chrome"}
+except ImportError:  # pragma: no cover
+    http, HTTP_KW = requests, {}
+
+CHART_HOSTS = ["query1.finance.yahoo.com", "query2.finance.yahoo.com"]
 HEADERS = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36"}
 TTL = timedelta(minutes=30)
 # Yahoo quotes JSE shares in cents (ZAc); everything here is shown in rand.
@@ -27,8 +34,11 @@ BENCHMARKS = [
 
 def fetch(symbol: str) -> dict:
     """One call: current price, name, ~5y of daily closes and dividends."""
-    r = requests.get(CHART_URL.format(urlquote(symbol)), headers=HEADERS, timeout=15,
-                     params={"range": "5y", "interval": "1d", "events": "div"})
+    for host in CHART_HOSTS:
+        r = http.get(f"https://{host}/v8/finance/chart/{urlquote(symbol)}", headers=HEADERS, timeout=15,
+                     params={"range": "5y", "interval": "1d", "events": "div"}, **HTTP_KW)
+        if r.status_code != 429:
+            break
     r.raise_for_status()
     chart = r.json().get("chart") or {}
     if chart.get("error") or not chart.get("result"):
