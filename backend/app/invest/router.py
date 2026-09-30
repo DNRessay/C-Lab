@@ -283,3 +283,35 @@ def update_property(prop_id: int, body: PropertyIn, user: User = Depends(current
 def delete_property(prop_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
     db.delete(mine(db, PropertyAsset, prop_id, user))
     db.commit()
+
+
+# EasyEquities blog: weekly dividends, monthly dividends list
+@router.get("/blog")
+def blog_view(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from . import blog
+
+    s = portfolio.summary(db, user.id)
+    return blog.view(db, s["holdings"], list(db.scalars(select(WatchItem).where(WatchItem.user_id == user.id))))
+
+
+@router.post("/blog/refresh")
+def blog_refresh(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from . import blog
+
+    return blog.refresh(db, limit=6)
+
+
+class BlogWatchIn(BaseModel):
+    instrument: str
+    account: str = "ZAR"
+
+
+@router.post("/blog/watch", status_code=201)
+def blog_watch(body: BlogWatchIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Put a blog dividend pick on the watchlist: the name is looked up to a ticker first."""
+    from . import blog
+
+    symbol = blog.search_symbol(body.instrument, body.account.upper())
+    if not symbol:
+        raise HTTPException(404, f"Couldn't find a ticker for {body.instrument}. Add it by symbol instead.")
+    return add_watch(WatchIn(symbol=symbol, notes=f"From EasyEquities' dividends update: {body.instrument}"[:500]), user, db)

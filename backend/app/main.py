@@ -123,6 +123,25 @@ def admin(event):
                     "lines_found": doc.lines_found,
                     "shape": [("* " if numbered[i] in taken else "  ") + s for i, s in
                               enumerate(reader.shape(doc.body, max_lines=10_000))][start:start + count]}
+        if event.get("action") == "blog_shape":
+            # What the blog reader sees: listing links, and the newest dividend post's lines with what was parsed.
+            from .invest import blog
+
+            links = []
+            for listing in blog.LISTINGS:
+                try:
+                    links += [u for u in blog.post_links(blog._get(listing)) if u not in links]
+                except Exception as e:
+                    links.append(f"error {listing}: {e}")
+            url = event.get("url") or next((u for u in links if "dividend" in u.lower()), None)
+            if not url:
+                return {"ok": False, "links": links}
+            title, published, main = blog.content(blog._get(url))
+            lines = blog.lines_of(main)
+            start, count = int(event.get("start", 0)), int(event.get("count", 80))
+            return {"ok": True, "links": links[:40], "url": url, "title": title, "published": str(published),
+                    "lines": lines[start:start + count], "total_lines": len(lines),
+                    "parsed": [{**i, "ldt": str(i["ldt"]), "pay_date": str(i["pay_date"])} for i in blog.parse_dividends(lines)][:30]}
         if event.get("action") == "read_bank":
             from .banking import reader as bank_reader
 
@@ -154,6 +173,13 @@ def handler(event, context):
                 result["bank_statements"] = read_all(db)
             except Exception:
                 logging.exception("Nightly bank statement read failed")
+                db.rollback()
+            try:
+                from .invest.blog import refresh
+
+                result["blog"] = refresh(db)
+            except Exception:
+                logging.exception("Nightly blog read failed")
                 db.rollback()
             result["alerts_sent"] = check_all(db)
             result["snapshots"] = record_all(db)

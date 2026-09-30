@@ -59,6 +59,17 @@
         <div class="card"><div class="chart-box short"><canvas id="account-chart" aria-label="Value per EasyEquities account" role="img"></canvas></div></div>
         <div class="grid" id="ee-accounts"></div>
       </div>
+      <div id="blog-wrap" hidden>
+        <h2>Dividends coming up</h2>
+        <p class="muted">From EasyEquities' weekly dividends update and monthly dividends list. Own it by the last day to trade to get paid.</p>
+        <div class="grid" id="blog-mine"></div>
+        <div class="card table-wrap"><table>
+          <thead><tr><th>What</th><th class="num">Amount</th><th>Last day to trade</th><th>Paid</th></tr></thead>
+          <tbody id="blog-rows"></tbody>
+        </table></div>
+        <details class="section" id="blog-posts-wrap"><summary><span>Latest from EasyEquities</span><span class="count" id="cnt-blog"></span></summary>
+          <div class="grid" id="blog-posts"></div></details>
+      </div>
       <div id="decisions-wrap" hidden>
         <h2>Needs your decision</h2>
         <div class="card table-wrap"><table><tbody id="ee-actions"></tbody></table></div>
@@ -262,6 +273,15 @@
         </form>
         <p class="muted" style="margin:0.5rem 0 0">JSE symbols end in <code>.JO</code>. Property shares to try: GRT.JO (Growthpoint), RDF.JO (Redefine), FFB.JO (Fortress), VKE.JO (Vukile), STXPRO.JO (Satrix Property ETF). Alerts are checked nightly and emailed to you.</p>
       </div>
+      <details class="section" id="picks-wrap" hidden>
+        <summary><span>Dividend picks from EasyEquities</span><span class="count" id="cnt-picks"></span></summary>
+        <p class="muted">Still time to buy before the last day to trade. <strong>Watch</strong> looks up the ticker and adds it here. <span id="picks-refresh-note"></span></p>
+        <div class="card table-wrap"><table>
+          <thead><tr><th>What</th><th class="num">Amount</th><th>Last day to trade</th><th>Paid</th><th></th></tr></thead>
+          <tbody id="picks"></tbody>
+        </table></div>
+        <button class="secondary small" id="blog-refresh">Check the blog now</button>
+      </details>
       <div class="card table-wrap"><table>
         <thead><tr><th>Symbol</th><th class="num">Price</th><th>Last year</th><th class="num">Day</th><th class="num">Month</th><th class="num">Year</th><th class="num">Div. yield</th><th class="num">52w range</th><th>Alerts</th><th></th></tr></thead>
         <tbody id="watch-rows"></tbody>
@@ -420,6 +440,7 @@
     async function loadSummary() {
       const s = await api.investSummary();
       renderEEOverview(s);
+      renderBlog(s.blog);
       renderCharts(s);
       renderHoldingCharts(s);
       api.investCharts().then(renderMonthly).catch(e => flash(e.message, "err"));
@@ -516,6 +537,7 @@
 
     // watchlist
     async function loadWatch() {
+      loadPicks().catch(e => flash(e.message, "err"));
       const rows = await api.watchlist();
       $("#watch-rows").innerHTML = rows.map(w => `<tr>
         <td><strong>${esc(w.symbol)}</strong><br><small class="muted">${esc(w.name)}</small></td>
@@ -1158,6 +1180,46 @@
       await api.addLiability({ ...d, rate: d.rate || null, monthly: d.monthly || null });
       e.target.reset();
       loadBank();
+    });
+
+    // EasyEquities blog: dividends coming up (overview) and picks to watch (watchlist)
+    const MINE = { hold: ["you hold this", "ok"], watch: ["on your watchlist", ""] };
+    const divAmt = (d) => d.amount == null ? "" : `${d.currency === "ZAR" ? "R" : d.currency === "USD" ? "$" : d.currency + " "}${amount(d.amount)}`;
+    const dayOr = (d) => d ? day(d) : "—";
+    function renderBlog(b) {
+      $("#blog-wrap").hidden = !(b && (b.upcoming.length || b.posts.length));
+      if (!b) return;
+      const mine = b.upcoming.filter(d => d.mine);
+      $("#blog-mine").innerHTML = mine.map(d => `<div class="card stat"><div class="value">${divAmt(d)}</div>
+        <div class="label"><strong>${esc(d.instrument)}</strong> ${badge(...MINE[d.mine])}<br>last day ${dayOr(d.ldt)} · paid ${dayOr(d.pay_date)}</div></div>`).join("");
+      $("#blog-rows").innerHTML = b.upcoming.slice(0, 40).map(d => `<tr><td>${esc(d.instrument)}<br><small class="muted">${esc(d.account)} account${d.mine ? " · " + MINE[d.mine][0] : ""}</small></td>
+        <td class="num">${divAmt(d)}</td><td>${dayOr(d.ldt)}${d.can_buy ? "" : ` ${badge("passed", "warn")}`}</td><td>${dayOr(d.pay_date)}</td></tr>`).join("")
+        || empty(4, "Nothing coming up in the latest posts.");
+      $("#cnt-blog").textContent = b.posts.length;
+      $("#blog-posts").innerHTML = b.posts.map(p => `<a class="card" href="${esc(p.url)}" target="_blank" rel="noopener">
+        <strong>${esc(p.title)}</strong><br><small class="muted">${dayOr(p.published)}${p.items ? ` · ${p.items} dividends` : ""}</small>
+        ${p.summary ? `<p class="muted" style="margin:0.4rem 0 0">${esc(p.summary.slice(0, 180))}${p.summary.length > 180 ? "…" : ""}</p>` : ""}</a>`).join("");
+    }
+    async function loadPicks() {
+      const b = await api.blog();
+      const picks = b.upcoming.filter(d => d.can_buy);
+      $("#picks-wrap").hidden = false;
+      $("#cnt-picks").textContent = picks.length;
+      $("#picks").innerHTML = picks.map((d, i) => `<tr><td>${esc(d.instrument)}<br><small class="muted">${esc(d.account)} account</small></td>
+        <td class="num">${divAmt(d)}</td><td>${dayOr(d.ldt)}</td><td>${dayOr(d.pay_date)}</td>
+        <td>${d.mine ? badge(...MINE[d.mine]) : `<button class="small pick" data-i="${i}">Watch</button>`}</td></tr>`).join("")
+        || empty(5, "No picks open right now. The blog is checked every night.");
+      $$("#picks .pick").forEach(el => el.addEventListener("click", async () => {
+        const d = picks[el.dataset.i];
+        el.disabled = true;
+        try { const w = await api.blogWatch({ instrument: d.instrument, account: d.account }); flash(`Watching ${w.symbol}.`); loadWatch(); }
+        catch (e) { flash(e.message, "err"); el.disabled = false; }
+      }));
+    }
+    action($("#blog-refresh"), async () => {
+      const r = await api.blogRefresh();
+      flash(`Blog checked: ${r.read} new post(s).`);
+      loadPicks();
     });
 
     // pages

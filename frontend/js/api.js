@@ -108,6 +108,9 @@ export const api = {
   updateProperty: (id, b) => put(`/api/invest/properties/${id}`, b),
   deleteProperty: (id) => del(`/api/invest/properties/${id}`),
 
+  blog: () => get("/api/invest/blog"),
+  blogRefresh: () => post("/api/invest/blog/refresh"),
+  blogWatch: (b) => post("/api/invest/blog/watch", b),
   bank: () => get("/api/bank"),
   bankSync: () => post("/api/bank/sync"),
   bankTxns: () => get("/api/bank/transactions"),

@@ -1,3 +1,4 @@
+import logging
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal
@@ -9,6 +10,8 @@ from . import prices
 from .ee.models import EEConnection
 from .ee.sync import platform_view, rand_rate, statement_rows
 from .models import InvestTxn, ManualPrice, PortfolioSnapshot, PropertyAsset
+
+log = logging.getLogger(__name__)
 
 ZERO = Decimal(0)
 
@@ -208,6 +211,7 @@ def summary(db: Session, user_id: int):
         "property_equity": physical_equity + ep_value,
         "easyproperties_value": ep_value,
         "net_worth": net_worth,
+        "blog": _blog(db, user_id, rows),
         # Real net worth = investments + own property equity + bank balances - debts. Fees already came out of balances.
         "banking": {"cash": bank["cash"], "debt": bank["debt"], "fees_12m": bank["fees_12m"],
                     "accounts": len(bank["accounts"])},
@@ -217,6 +221,17 @@ def summary(db: Session, user_id: int):
                                       for a in ee_view["accounts"]]}
         if ee_view else None,
     }
+
+
+def _blog(db: Session, user_id: int, rows):
+    from .blog import view
+    from .models import WatchItem
+
+    try:
+        return view(db, rows, list(db.scalars(select(WatchItem).where(WatchItem.user_id == user_id))))
+    except Exception:
+        log.exception("Blog view failed")
+        return {"posts": [], "upcoming": []}
 
 
 def statement_history(db: Session, user_id: int):

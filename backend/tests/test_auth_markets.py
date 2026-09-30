@@ -49,8 +49,11 @@ def test_schedule_event_runs_alerts(monkeypatch):
 
     monkeypatch.setattr(ee_sync, "sync_all", lambda db: 1)
     monkeypatch.setattr(portfolio, "record_all", lambda db: 2)
+    import app.invest.blog as blog
+
+    monkeypatch.setattr(blog, "refresh", lambda db: {"links": 0, "read": 0})
     assert handler({"source": "aws.events", "detail-type": "Scheduled Event"}, None) == \
-        {"easyequities_synced": 1, "bank_statements": 0, "alerts_sent": 3, "snapshots": 2}
+        {"easyequities_synced": 1, "bank_statements": 0, "blog": {"links": 0, "read": 0}, "alerts_sent": 3, "snapshots": 2}
 
 
 def test_admin_event_sets_pdf_password():
