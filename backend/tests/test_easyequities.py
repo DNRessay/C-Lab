@@ -259,6 +259,7 @@ def test_platform_parsers():
     assert rows[0]["contract_code"] == "EQU.ZA.AIP" and rows[0]["current_value"] == 1050.0
     assert platform.parse_shares("<div>#Shares</div><div>12</div><div>#FSR</div><div>.5</div>") == 12.5
     assert platform.money("-R2 000.50") == -2000.5
+    assert platform.money(3.4e-05) == 3.4e-05 and platform.money(0.0034) == 0.0034  # numbers stay numbers
 
 
 def test_snapshot_and_login_failure():
@@ -365,7 +366,8 @@ def test_connect_sync_and_portfolio(market):
     assert c["months"][-1] == date.today().isoformat()[:7]
 
     st = api.get("/api/ee/statements", headers=h).json()
-    assert st[0] == {"id": 0, "name": "EE ZAR Aug 2026.pdf", "account": "EasyEquities ZAR"}
+    assert {x["name"]: x["period"] for x in st} == {"EE ZAR Aug 2026.pdf": "2026-08", "EE ZAR Jul 2026.pdf": "2026-07"}
+    assert api.get("/api/ee/statements/0?inline=true", headers=h).headers["content-disposition"].startswith("inline")
     pdf = api.get("/api/ee/statements/0", headers=h)
     assert pdf.status_code == 200 and pdf.content == PDF and pdf.headers["content-type"] == "application/pdf"
     assert api.get("/api/ee/statements/9", headers=h).status_code == 404
@@ -376,6 +378,8 @@ def test_connect_sync_and_portfolio(market):
     assert (row["action"], row["date"], row["amount"]) == ("Buy", "2025-05-12", -50.3)
     assert {"account": "EasyEquities ZAR", "year": "2025", "currency": "ZAR", "trade": -50.3, "deposit": 1676.0,
             "dividend": 2.5, "fee": -1.15} in t["totals"]
+    assert t["by_account"] == [{"account": "EasyEquities ZAR", "income": 2.5, "costs": 1.15}]
+    assert t["cost_types"] == [{"type": "Account fees", "amount": 1.15}]  # "Monthly custody fee"
 
     # A second sync adds nothing twice; re-reading emails is idempotent too.
     api.post("/api/ee/sync", headers=h)
@@ -400,6 +404,19 @@ def test_connect_sync_and_portfolio(market):
 ])
 def test_statement_categories(action, comment, cat):
     assert sync.categorise(action, comment) == cat
+
+
+def test_statement_file_names_and_cost_types():
+    from app.invest.ee.router import statement_info
+
+    accounts = {"EE1720926-7814224": "EasyEquities ZAR"}
+    info = statement_info("EE1720926-7814224 Test User - Monthly Statement 2025-08-31.pdf", accounts)
+    assert info == {"account": "EasyEquities ZAR", "account_number": "EE1720926-7814224", "kind": "monthly", "period": "2025-08"}
+    assert statement_info("EE1720926-11088540 Test User - Tax Statement 2025.pdf", accounts)["kind"] == "tax"
+    assert statement_info("EE1720926-11088540 Test User - Tax Statement 2025.pdf", accounts)["account"] == "EE1720926-11088540"
+    assert sync.cost_type("VAT on custody fee") == "VAT"
+    assert sync.cost_type("Dividend Withholding Tax @ 20%") == "Dividend tax"
+    assert sync.cost_type("Broker commission") == "Brokerage"
 
 
 def test_failed_sync_keeps_last_snapshot(market, monkeypatch):

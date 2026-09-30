@@ -187,18 +187,46 @@ def sync_now(user: User = Depends(current_user), db: Session = Depends(get_db)):
 @router.get("/transactions")
 def platform_transactions(user: User = Depends(current_user), db: Session = Depends(get_db)):
     rows = sync.platform_transactions(connection(db, user))
-    return {"rows": rows, "totals": sync.statement_totals(rows)}
+    return {"rows": rows, "totals": sync.statement_totals(rows), **sync.statement_breakdown(db, rows)}
+
+
+MONTHS = {m: i for i, m in enumerate(("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"), 1)}
+
+
+def statement_info(name: str, accounts: dict):
+    """Account, kind and period from a statement file name like 'EE1720926-7814224 Name - Monthly Statement ...'."""
+    import re
+
+    num = re.search(r"EE\d+-\d+", name)
+    kind = "tax" if re.search(r"tax", name, re.I) else "monthly" if re.search(r"monthly", name, re.I) else "other"
+    period = ""
+    m = re.search(r"(20\d{2})[-_ /]?(0[1-9]|1[0-2])(?:[-_ /]?(\d{2}))?", name)
+    if m:
+        period = f"{m.group(1)}-{m.group(2)}"
+    else:
+        m = re.search(r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*[ _-]*(20\d{2})", name, re.I)
+        if m:
+            period = f"{m.group(2)}-{MONTHS[m.group(1).lower()]:02d}"
+        else:
+            m = re.search(r"(20\d{2})", name)
+            period = m.group(1) if m else ""
+    number = num.group(0) if num else ""
+    return {"account": accounts.get(number) or number or "Other", "account_number": number, "kind": kind, "period": period}
 
 
 @router.get("/statements")
 def statements(user: User = Depends(current_user), db: Session = Depends(get_db)):
     conn = connection(db, user)
     items = ((conn.snapshot or {}).get("statements") or []) if conn else []
-    return [{"id": i, "name": x["name"], "account": x.get("account", "")} for i, x in enumerate(items)]
+    # EasyEquities account numbers -> names, learnt from the emails (EE1720926-7814224 = EasyEquities ZAR).
+    accounts = dict(db.execute(select(EEMail.account_number, EEMail.account).where(
+        EEMail.user_id == user.id, EEMail.account_number != "", EEMail.account != "")).all())
+    out = [{"id": i, "name": x["name"], **statement_info(x["name"], accounts)} for i, x in enumerate(items)]
+    return sorted(out, key=lambda r: (r["account"], r["kind"], r["period"]), reverse=False)
 
 
 @router.get("/statements/{idx}")
-def download_statement(idx: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def download_statement(idx: int, inline: bool = False, user: User = Depends(current_user), db: Session = Depends(get_db)):
     """Logs in to EasyEquities and passes the PDF through; nothing is stored."""
     conn = connection(db, user)
     items = ((conn.snapshot or {}).get("statements") or []) if conn else []
@@ -211,7 +239,8 @@ def download_statement(idx: int, user: User = Depends(current_user), db: Session
     except platform.PlatformError as e:
         raise HTTPException(502, f"EasyEquities: {e}")
     name = items[idx]["name"].replace('"', "") or "statement.pdf"
-    return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+    how = "inline" if inline else "attachment"
+    return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'{how}; filename="{name}"'})
 
 
 @router.post("/reparse")

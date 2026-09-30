@@ -126,29 +126,51 @@
 
     <!-- Transactions -->
     <section id="transactions" hidden>
-      <div id="trade-wrap" hidden>
-        <h2 style="margin-top:0">Buys and sells</h2>
-        <div class="card">
+      <div class="search-bar">
+        <input id="tx-search" type="search" placeholder="Search transactions, statements, emails…" autocomplete="off" aria-label="Search everything on this page" />
+        <small class="muted" id="tx-search-note"></small>
+      </div>
+
+      <div class="chart-grid" id="tx-charts">
+        <div class="card" id="trade-wrap" hidden>
+          <h3>Buys and sells per month</h3>
           <div class="legend"><span><i style="background:var(--series-1)"></i>Bought</span><span><i style="background:var(--series-2)"></i>Sold</span></div>
           <div class="chart-box short"><canvas id="trade-chart" role="img" aria-label="Money spent buying and received selling per month"></canvas></div>
         </div>
+        <div class="card" id="cost-wrap" hidden>
+          <h3>Where the costs went</h3>
+          <div class="pie-row"><div class="pie-box"><canvas id="cost-chart" role="img" aria-label="Fees and tax by type"></canvas></div><ul class="pie-legend" id="cost-legend"></ul></div>
+        </div>
+        <div class="card" id="income-acc-wrap" hidden>
+          <h3>Dividends and interest by account</h3>
+          <div class="pie-row"><div class="pie-box"><canvas id="income-acc-chart" role="img" aria-label="Dividends and interest by account"></canvas></div><ul class="pie-legend" id="income-acc-legend"></ul></div>
+        </div>
+        <div class="card" id="acc-io-wrap" hidden>
+          <h3>Earned vs paid, per account</h3>
+          <div class="legend"><span><i style="background:var(--pos)"></i>Dividends + interest</span><span><i style="background:var(--neg)"></i>Fees + tax</span></div>
+          <div class="chart-box" id="acc-io-box"><canvas id="acc-io-chart" role="img" aria-label="Income and costs per account"></canvas></div>
+        </div>
       </div>
-      <h2>Your transactions</h2>
-      <div class="card table-wrap"><table>
-        <thead><tr><th>Date</th><th>Type</th><th>Holding</th><th class="num">Units</th><th class="num">Price</th><th class="num">Amount</th><th></th></tr></thead>
-        <tbody id="txn-rows"></tbody>
-      </table></div>
 
-      <div id="pdf-wrap" hidden>
-        <h2>Printable statements</h2>
-        <div class="card table-wrap"><table><tbody id="pdf-rows"></tbody></table></div>
-      </div>
+      <details class="section" id="sec-txns">
+        <summary><span>Your transactions</span><span class="count" id="cnt-txns"></span></summary>
+        <div class="card table-wrap"><table>
+          <thead><tr><th>Date</th><th>Type</th><th>Holding</th><th class="num">Units</th><th class="num">Price</th><th class="num">Amount</th><th></th></tr></thead>
+          <tbody id="txn-rows"></tbody>
+        </table></div>
+      </details>
 
-      <div id="stmt-wrap" hidden>
-        <h2>EasyEquities statement: dividends, fees and more</h2>
+      <details class="section" id="pdf-wrap" hidden>
+        <summary><span>Printable statements</span><span class="count" id="cnt-pdf"></span></summary>
+        <p class="muted">Grouped by account. <strong>View</strong> opens the PDF in your browser; nothing is stored in C-Lab.</p>
+        <div id="pdf-groups"></div>
+      </details>
+
+      <details class="section" id="stmt-wrap" hidden>
+        <summary><span>Statement lines: dividends, fees and more</span><span class="count" id="cnt-stmt"></span></summary>
         <p class="muted">Every line from EasyEquities' own transaction history, totalled per account and year. Fees and tax show as negative.</p>
         <div class="card table-wrap"><table>
-          <thead><tr><th>Year</th><th>Account</th><th class="num">Dividends</th><th class="num">Interest</th><th class="num">Fees</th><th class="num">Tax</th><th class="num">Deposits</th><th class="num">Withdrawals</th><th class="num">Other</th></tr></thead>
+          <thead><tr><th>Account · year</th><th class="num">Dividends</th><th class="num">Interest</th><th class="num">Fees</th><th class="num">Tax</th><th class="num">Deposits</th><th class="num">Withdrawals</th><th class="num">Other</th></tr></thead>
           <tbody id="stmt-totals"></tbody>
         </table></div>
         <div class="row" style="margin-bottom:0.6rem">
@@ -163,21 +185,25 @@
           <thead><tr><th>Date</th><th>Account</th><th>What</th><th>Details</th><th class="num">Amount</th></tr></thead>
           <tbody id="stmt-rows"></tbody>
         </table></div>
-      </div>
+      </details>
 
-      <h2>From your EasyEquities emails</h2>
-      <div class="row" style="margin-bottom:0.6rem">
-        <select id="ee-kind">
-          <option value="">Everything</option><option value="trade">Trades</option><option value="order">Property orders</option>
-          <option value="deposit">Deposits</option><option value="withdrawal">Withdrawals</option>
-          <option value="corporate_action">Corporate actions</option><option value="bundle">Bundles</option><option value="notice">Other notices</option>
-        </select>
-      </div>
-      <div class="card table-wrap"><table>
-        <thead><tr><th>Date</th><th>What</th><th>Holding</th><th>Account</th><th class="num">Units</th><th class="num">Price</th><th class="num">Amount</th><th class="num">Costs</th><th></th></tr></thead>
-        <tbody id="ee-mails"></tbody>
-      </table></div>
-      <h2>Add by hand</h2>
+      <details class="section" id="sec-mails">
+        <summary><span>From your EasyEquities emails</span><span class="count" id="cnt-mails"></span></summary>
+        <div class="row" style="margin-bottom:0.6rem">
+          <select id="ee-kind">
+            <option value="">Everything</option><option value="trade">Trades</option><option value="order">Property orders</option>
+            <option value="deposit">Deposits</option><option value="withdrawal">Withdrawals</option>
+            <option value="corporate_action">Corporate actions</option><option value="bundle">Bundles</option><option value="notice">Other notices</option>
+          </select>
+        </div>
+        <div class="card table-wrap"><table>
+          <thead><tr><th>Date</th><th>What</th><th>Holding</th><th>Account</th><th class="num">Units</th><th class="num">Price</th><th class="num">Amount</th><th class="num">Costs</th><th></th></tr></thead>
+          <tbody id="ee-mails"></tbody>
+        </table></div>
+      </details>
+
+      <details class="section" id="sec-add">
+        <summary><span>Add by hand or import a CSV</span></summary>
       <div class="card">
         <h3>Add a transaction</h3>
         <form id="txn-form">
@@ -207,8 +233,9 @@
           <input type="file" name="file" accept=".csv" required class="grow" />
           <button type="submit" class="secondary">Import</button>
         </form>
-        <p><a href="#transactions" id="template">Download the template</a>. EasyEquities trades arrive here automatically once Gmail is connected on the EasyEquities page.</p>
+        <p><a href="#transactions" id="template">Download the template</a>. EasyEquities trades arrive here automatically once Google is connected (Account → Google).</p>
       </div>
+      </details>
     </section>
 
     <!-- Watchlist -->
@@ -374,6 +401,8 @@
         <td>${esc(t.symbol)}${t.name ? `<br><small class="muted">${esc(t.name)}</small>` : ""}</td>
         <td class="num">${units(t.quantity)}</td><td class="num">${t.price != null ? money(t.price) : ""}</td><td class="num">${money(t.amount)}</td>
         <td><button class="secondary small del" data-id="${t.id}">Delete</button></td></tr>`).join("") || empty(7, "No transactions yet.");
+      $("#cnt-txns").textContent = rows.length;
+      applySearch();
       $$("#txn-rows .del").forEach(b => b.addEventListener("click", async () => {
         if (!confirm("Delete this transaction?")) return;
         try { await api.deleteInvestTxn(b.dataset.id); loadTxns(); } catch (e) { flash(e.message, "err"); }
@@ -741,35 +770,138 @@
     function renderStatement() {
       const cat = $("#stmt-cat").value, acc = $("#stmt-acc").value;
       const n = (t, k) => t[k] ? `<span class="${t[k] < 0 ? "neg" : ""}">${cur(t[k], t.currency)}</span>` : "";
-      $("#stmt-totals").innerHTML = stmt.totals.filter(t => !acc || t.account === acc).map(t => `<tr><td>${esc(t.year)}</td><td>${esc(t.account)}</td>
+      $("#stmt-totals").innerHTML = stmt.totals.filter(t => !acc || t.account === acc).map(t => `<tr><td><strong>${esc(t.account)}</strong> · ${esc(t.year)}</td>
         <td class="num">${n(t, "dividend")}</td><td class="num">${n(t, "interest")}</td><td class="num">${n(t, "fee")}</td><td class="num">${n(t, "tax")}</td>
-        <td class="num">${n(t, "deposit")}</td><td class="num">${n(t, "withdrawal")}</td><td class="num">${n(t, "other")}</td></tr>`).join("") || empty(9, "No statement lines yet.");
+        <td class="num">${n(t, "deposit")}</td><td class="num">${n(t, "withdrawal")}</td><td class="num">${n(t, "other")}</td></tr>`).join("") || empty(8, "No statement lines yet.");
       const rows = stmt.rows.filter(r => (!cat || r.category === cat) && (!acc || r.account === acc)).slice(0, 500);
       $("#stmt-rows").innerHTML = rows.map(r => { const [label, cls] = CAT[r.category] || [r.category, ""]; return `<tr><td>${esc(r.date)}</td><td><small>${esc(r.account)}</small></td>
         <td>${badge(label, cls)}</td><td>${esc(r.comment || r.action)}${r.contract_code ? `<br><small class="muted">${esc(r.contract_code)}</small>` : ""}</td>
         <td class="num ${r.amount < 0 ? "neg" : ""}">${cur(r.amount, r.currency)}</td></tr>`; }).join("") || empty(5, "Nothing here.");
     }
-    $("#stmt-cat").addEventListener("change", renderStatement);
-    $("#stmt-acc").addEventListener("change", renderStatement);
+    $("#stmt-cat").addEventListener("change", () => { renderStatement(); applySearch(); });
+    $("#stmt-acc").addEventListener("change", () => { renderStatement(); applySearch(); });
+    // Printable statements: account → type (Monthly / Tax) → compact cards with View and Download.
+    const periodLabel = (p) => /^\d{4}-\d{2}$/.test(p) ? new Date(p + "-01").toLocaleDateString("en-ZA", { month: "long", year: "numeric" }) : (p || "");
+    async function openPdf(id, name, inline) {
+      const w = inline ? window.open("", "_blank") : null;  // open now, so the browser doesn't block it as a pop-up
+      try {
+        flash("Fetching the statement from EasyEquities…", "warn");
+        const res = await api.eeStatementPdf(id, inline);
+        const url = URL.createObjectURL(await res.blob());
+        if (w) { w.location.href = url; flash("Opened in a new tab."); }
+        else { Object.assign(document.createElement("a"), { href: url, download: name }).click(); flash("Downloaded."); }
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      } catch (e) { w?.close(); flash(e.message, "err"); }
+    }
     async function loadPdfs() {
       const rows = await api.eeStatements();
       $("#pdf-wrap").hidden = !rows.length;
-      $("#pdf-rows").innerHTML = rows.map(r => `<tr><td>${esc(r.name)}${r.account ? `<br><small class="muted">${esc(r.account)}</small>` : ""}</td>
-        <td><button class="secondary small pdf" data-id="${r.id}" data-name="${esc(r.name)}">Download PDF</button></td></tr>`).join("");
-      $$("#pdf-rows .pdf").forEach(b => action(b, async () => {
-        flash("Fetching the statement from EasyEquities…", "warn");
-        await download(api.eeStatementPdf(b.dataset.id), b.dataset.name);
-        flash("Downloaded.");
-      }));
+      $("#cnt-pdf").textContent = rows.length;
+      const byAcc = {};
+      rows.forEach(r => ((byAcc[r.account] ||= {})[r.kind] ||= []).push(r));
+      const KINDS = { monthly: "Monthly statements", tax: "Tax statements", other: "Other documents" };
+      $("#pdf-groups").innerHTML = Object.entries(byAcc).map(([acc, kinds]) => {
+        const n = Object.values(kinds).reduce((a, l) => a + l.length, 0);
+        return `<details class="group-card"><summary><span>${esc(acc)}</span><span class="count">${n}</span></summary>
+          ${Object.entries(kinds).map(([k, list]) => `<h4>${KINDS[k] || esc(k)}</h4><div class="docs">
+            ${list.sort((a, b) => (b.period || "").localeCompare(a.period || "")).map(r => `<div class="doc" data-search="${esc(r.name)}">
+              <div class="doc-main"><strong>${esc(periodLabel(r.period) || "Statement")}</strong><small class="muted" title="${esc(r.name)}">${esc(r.name)}</small></div>
+              <div class="row"><button class="secondary small pdf-view" data-id="${r.id}" data-name="${esc(r.name)}">View</button>
+                <button class="secondary small pdf-dl" data-id="${r.id}" data-name="${esc(r.name)}">Download</button></div></div>`).join("")}
+          </div>`).join("")}</details>`;
+      }).join("");
+      $$("#pdf-groups .pdf-view").forEach(b => b.onclick = () => openPdf(b.dataset.id, b.dataset.name, true));
+      $$("#pdf-groups .pdf-dl").forEach(b => b.onclick = () => openPdf(b.dataset.id, b.dataset.name, false));
+      applySearch();
     }
+
+    // Statement charts: costs by type and income by account (pies), earned vs paid per account (bars).
+    const CATS = ["--cat-1", "--cat-2", "--cat-3", "--cat-4", "--cat-5", "--cat-6"];
+    function pie(id, legendId, items) {
+      const top = items.slice(0, 5), rest = items.slice(5).reduce((a, x) => a + x.value, 0);
+      const data = rest > 0 ? [...top, { label: "Everything else", value: rest }] : top;
+      const total = data.reduce((a, x) => a + x.value, 0) || 1;
+      const colours = data.map((_, i) => css(CATS[i]));
+      chart(id, {
+        type: "doughnut",
+        data: { labels: data.map(x => x.label), datasets: [{ data: data.map(x => x.value), backgroundColor: colours,
+          borderColor: css("--panel"), borderWidth: 2, hoverOffset: 6 }] },
+        options: { maintainAspectRatio: false, cutout: "58%", plugins: { legend: { display: false },
+          tooltip: { ...tooltip, callbacks: { label: (c) => ` ${c.label}: ${money(c.parsed)} (${(c.parsed / total * 100).toFixed(0)}%)` } } } },
+      });
+      $(legendId).innerHTML = data.map((x, i) => `<li><i style="background:${colours[i]}"></i><span>${esc(x.label)}</span>
+        <b>${money(x.value)}</b><small class="muted">${(x.value / total * 100).toFixed(0)}%</small></li>`).join("");
+    }
+    function renderStatementCharts(t) {
+      const costs = (t.cost_types || []).filter(x => x.amount > 0).map(x => ({ label: x.type, value: x.amount }));
+      $("#cost-wrap").hidden = !costs.length;
+      if (costs.length) pie("#cost-chart", "#cost-legend", costs);
+      const inc = (t.by_account || []).filter(a => a.income > 0).map(a => ({ label: a.account, value: a.income }));
+      $("#income-acc-wrap").hidden = !inc.length;
+      if (inc.length) pie("#income-acc-chart", "#income-acc-legend", inc);
+      const accs = (t.by_account || []).filter(a => a.income || a.costs);
+      $("#acc-io-wrap").hidden = !accs.length;
+      if (!accs.length) return;
+      sizeBox("#acc-io-box", accs.length * 1.7);
+      chart("#acc-io-chart", {
+        type: "bar",
+        data: { labels: accs.map(a => a.account), datasets: [
+          { label: "Dividends + interest", data: accs.map(a => a.income), backgroundColor: css("--pos"), borderRadius: 4, borderSkipped: "start", maxBarThickness: 12 },
+          { label: "Fees + tax", data: accs.map(a => a.costs), backgroundColor: css("--neg"), borderRadius: 4, borderSkipped: "start", maxBarThickness: 12 },
+        ] },
+        options: { indexAxis: "y", maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+          plugins: { legend: { display: false }, tooltip: { ...tooltip, callbacks: { label: (c) => ` ${c.dataset.label}: ${money(c.parsed.x)}` } } },
+          scales: { x: { ticks: { callback: randTick, maxTicksLimit: 5 } }, y: { grid: { display: false } } } },
+      });
+    }
+
     async function loadStatement() {
       loadPdfs().catch(e => flash(e.message, "err"));
       stmt = await api.eeTransactions();
       $("#stmt-wrap").hidden = !stmt.rows.length;
+      $("#cnt-stmt").textContent = stmt.rows.length;
       const accounts = [...new Set(stmt.rows.map(r => r.account))];
       $("#stmt-acc").innerHTML = `<option value="">All accounts</option>` + accounts.map(a => `<option>${esc(a)}</option>`).join("");
       renderStatement();
+      renderStatementCharts(stmt);
+      applySearch();
     }
+
+    // One search for the whole page: filters rows/cards, opens the sections (and account groups) that have matches.
+    let searchTimer;
+    function applySearch() {
+      const q = ($("#tx-search").value || "").trim().toLowerCase();
+      const sections = $$("#transactions details.section");
+      let total = 0;
+      sections.forEach(sec => {
+        const items = $$("tbody tr, .doc", sec);
+        let hits = 0;
+        items.forEach(el => {
+          const text = (el.textContent + " " + (el.dataset.search || "")).toLowerCase();
+          const hit = !q || text.includes(q);
+          el.classList.toggle("filtered-out", !hit);
+          if (hit && q) hits++;
+        });
+        $$(".group-card", sec).forEach(g => {
+          const any = !q || $$(".doc:not(.filtered-out)", g).length > 0;
+          g.classList.toggle("filtered-out", !any);
+          if (q) g.open = any;
+        });
+        if (q) {
+          if (sec.dataset.wasOpen === undefined) sec.dataset.wasOpen = sec.open ? "1" : "";
+          sec.open = hits > 0;
+          sec.classList.toggle("no-hits", hits === 0);
+        } else if (sec.dataset.wasOpen !== undefined) {
+          sec.open = sec.dataset.wasOpen === "1";
+          delete sec.dataset.wasOpen;
+          sec.classList.remove("no-hits");
+        }
+        total += hits;
+      });
+      $("#tx-search-note").textContent = q ? (total ? `${total} match${total === 1 ? "" : "es"}` : "No matches") : "";
+      $("#tx-charts").classList.toggle("filtered-out", !!q);  // results first while searching
+    }
+    $("#tx-search").addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(applySearch, 150); });
 
     async function loadEEMails() {
       const rows = await api.eeMails($("#ee-kind").value);
@@ -779,8 +911,10 @@
         <td>${esc(m.instrument || m.subject)}</td><td><small>${esc(m.account)}</small></td>
         <td class="num">${units(m.quantity)}</td><td class="num">${cur(m.price, m.currency)}</td>
         <td class="num">${cur(m.value, m.currency)}</td><td class="num">${cur(m.costs, m.currency)}</td>
-        <td><button class="secondary small ee-open" data-id="${m.id}">Read</button></td></tr>`; }).join("") || empty(9, "No EasyEquities emails yet. Connect Gmail on the EasyEquities page.");
+        <td><button class="secondary small ee-open" data-id="${m.id}">Read</button></td></tr>`; }).join("") || empty(9, "No EasyEquities emails yet. Sign in with Google under Account → Google.");
+      $("#cnt-mails").textContent = rows.length;
       bindMailButtons(loadEEMails);
+      applySearch();
     }
     $("#ee-kind").addEventListener("change", () => loadEEMails().catch(e => flash(e.message, "err")));
 

@@ -79,6 +79,9 @@ def sync_platform(db: Session, conn: EEConnection, client=None, ep_fetch=None):
                  [(a.get("name"), len(a.get("holdings", [])), a.get("warnings", [])) for a in snap["accounts"]])
         log.info("EasyEquities statement links: %s", snap.get("statement_links"))
         log.info("EasyProperties: %s", snap.get("easyproperties"))
+        zero = [(type(t.get("DebitCredit")).__name__, repr(t.get("DebitCredit"))[:20]) for a in snap["accounts"]
+                for t in (a.get("transactions") or []) if isinstance(t, dict) and platform.money(t.get("DebitCredit")) == 0][:8]
+        log.info("EasyEquities zero-amount statement lines (type, raw): %s", zero)
         log.info("EasyEquities statements: %d listed %s", len(snap.get("statements") or []), snap.get("statements_error", ""))
         log.info("EasyEquities account switch: %s",
                  {a.get("name"): a.get("switch_debug") for a in snap["accounts"] if a.get("switch_debug")})
@@ -154,6 +157,44 @@ def statement_totals(rows):
         t = out.setdefault(key, {"account": r["account"], "year": key[1], "currency": r["currency"]})
         t[r["category"]] = round(t.get(r["category"], 0.0) + r["amount"], 5)  # tiny dividends are fractions of a cent
     return sorted(out.values(), key=lambda t: (t["year"], t["account"] or ""), reverse=True)
+
+
+COST_TYPES = [
+    ("Dividend tax", r"withholding|dividend tax|\bdwt\b|\bwht\b"),
+    ("VAT", r"\bvat\b|value.added"),
+    ("Brokerage", r"brokerage|commission|broker"),
+    ("Taxes and levies", r"securities transfer|\bstt\b|levy|\bipl\b|investor protection|sec fee|finra"),
+    ("Account fees", r"custody|admin|platform|account fee|subscription|thrive|monthly fee|settlement"),
+]
+
+
+def cost_type(comment: str, action: str = "") -> str:
+    text = f"{action} {comment}".lower()
+    for name, pattern in COST_TYPES:
+        if re.search(pattern, text):
+            return name
+    return "Other fees"
+
+
+def statement_breakdown(db: Session, rows):
+    """For the pie and bar charts: income and costs per account, and costs by type. All in rand."""
+    rates, by_account, types = {}, {}, {}
+    for r in rows:
+        if r["amount"] is None or r["category"] not in ("dividend", "interest", "fee", "tax"):
+            continue
+        if r["currency"] not in rates:
+            rates[r["currency"]] = rand_rate(db, r["currency"]) or 0.0
+        v = abs(r["amount"]) * rates[r["currency"]]
+        acc = by_account.setdefault(r["account"], {"account": r["account"], "income": 0.0, "costs": 0.0})
+        if r["category"] in ("dividend", "interest"):
+            acc["income"] += v
+        else:
+            acc["costs"] += v
+            t = cost_type(r["comment"], r["action"])
+            types[t] = types.get(t, 0.0) + v
+    return {"by_account": [{**a, "income": round(a["income"], 5), "costs": round(a["costs"], 5)}
+                           for a in sorted(by_account.values(), key=lambda a: -(a["income"] + a["costs"]))],
+            "cost_types": [{"type": k, "amount": round(v, 5)} for k, v in sorted(types.items(), key=lambda kv: -kv[1])]}
 
 
 def platform_transactions(conn: EEConnection):

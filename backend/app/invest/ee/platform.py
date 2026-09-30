@@ -37,6 +37,8 @@ def money(text):
     """'R2 000.00' / '$353.61' / '-R12.30' -> float, or None."""
     if text is None:
         return None
+    if isinstance(text, (int, float)) and not isinstance(text, bool):
+        return float(text)  # already a number (JSON); str() could give 3.4e-05, which the regex below would misread
     s = str(text).replace("\xa0", "").replace(" ", "").replace(",", "")
     m = re.search(r"(-?)[^\d-]*(\d+(?:\.\d+)?)", s)
     return float(m.group(1) + m.group(2)) if m else None
