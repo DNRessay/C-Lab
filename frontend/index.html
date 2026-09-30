@@ -3,9 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>C-Lab — Charlie's Lab</title>
+  <title>C-Lab — Charlie'$ Lab</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/css/style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <style>
     .bar { height: 0.5rem; background: var(--border); border-radius: 999px; overflow: hidden; min-width: 80px; }
     .bar > span { display: block; height: 100%; background: var(--accent); }
@@ -30,8 +31,15 @@
     <!-- Overview -->
     <section id="overview" hidden>
       <div class="grid" id="kpis"></div>
+      <h2>Worth over time</h2>
+      <div class="card">
+        <div class="legend"><span><i style="background:var(--series-1)"></i>Portfolio worth</span><span><i style="background:var(--series-2)"></i>Money put in</span></div>
+        <div class="chart-box"><canvas id="worth-chart" aria-label="Portfolio worth and money put in over time" role="img"></canvas></div>
+        <p class="muted" id="worth-note" style="margin:0.5rem 0 0"></p>
+      </div>
       <div id="ee-overview" hidden>
         <h2>EasyEquities accounts</h2>
+        <div class="card"><div class="chart-box short"><canvas id="account-chart" aria-label="Value per EasyEquities account" role="img"></canvas></div></div>
         <div class="grid" id="ee-accounts"></div>
       </div>
       <div id="decisions-wrap" hidden>
@@ -254,6 +262,7 @@
     async function loadSummary() {
       const s = await api.investSummary();
       renderEEOverview(s);
+      renderCharts(s);
       loadDecisions().catch(e => flash(e.message, "err"));
       const kpi = (label, value, sub = "") => `<div class="card stat"><div class="value">${value}</div><div class="label">${label}${sub ? `<br>${sub}` : ""}</div></div>`;
       $("#kpis").innerHTML =
@@ -262,7 +271,7 @@
         kpi("Gain", signed(s.gain), pct(s.return_pct)) +
         (s.income ? kpi("Dividends + interest", money(s.income.dividend + s.income.interest), "all time, from EasyEquities") +
           kpi("Fees + tax paid", `<span class="neg">${money(s.income.fee + s.income.tax)}</span>`, `fees ${money(s.income.fee)} · tax ${money(s.income.tax)}`) : "") +
-        kpi("Property equity", money(s.property_equity)) +
+        kpi("Property equity", money(s.property_equity), s.easyproperties_value ? `incl. ${money(s.easyproperties_value)} EasyProperties` : "") +
         kpi("Net worth (tracked)", money(s.net_worth));
 
       $("#bench-note").textContent = s.invested
@@ -488,6 +497,48 @@
     action($("#ee-mail-off"), async () => { if (confirm("Disconnect Gmail and forget the app password?")) renderEE(await api.eeDisconnectMail()); });
 
     // EasyEquities data on the other pages
+    // charts (Chart.js). Series colours come from CSS tokens validated for the dark surface.
+    const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+    const charts = {};
+    function chart(id, config) {
+      if (!window.Chart) return;
+      charts[id]?.destroy();
+      Chart.defaults.color = css("--muted");
+      Chart.defaults.borderColor = "rgba(255,255,255,0.06)";
+      Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+      charts[id] = new Chart($(id), config);
+    }
+    const randTick = (v) => "R " + Number(v).toLocaleString("en-ZA", { maximumFractionDigits: 0 });
+    const tooltip = { backgroundColor: css("--panel-2"), borderColor: css("--accent"), borderWidth: 1, titleColor: css("--text"),
+      bodyColor: css("--text"), padding: 10, callbacks: { label: (c) => ` ${c.dataset.label}: ${money(c.parsed.y ?? c.parsed.x)}` } };
+
+    function renderCharts(s) {
+      const h = s.history || [];
+      $("#worth-note").textContent = h.length < 2
+        ? "C-Lab saves your numbers once a day, so this line grows from today."
+        : `Since ${h[0].date}. Hover or tap for the numbers on a day.`;
+      chart("#worth-chart", {
+        type: "line",
+        data: { labels: h.map(p => p.date), datasets: [
+          { label: "Portfolio worth", data: h.map(p => p.value), borderColor: css("--series-1"), backgroundColor: css("--series-1"),
+            borderWidth: 2, pointRadius: h.length < 20 ? 4 : 0, pointHoverRadius: 5, tension: 0.25 },
+          { label: "Money put in", data: h.map(p => p.invested), borderColor: css("--series-2"), backgroundColor: css("--series-2"),
+            borderWidth: 2, pointRadius: h.length < 20 ? 4 : 0, pointHoverRadius: 5, stepped: true },
+        ] },
+        options: { maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+          plugins: { legend: { display: false }, tooltip },
+          scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 6 } }, y: { ticks: { callback: randTick, maxTicksLimit: 5 } } } },
+      });
+      const acc = s.easyequities?.accounts || [];
+      if (acc.length) chart("#account-chart", {
+        type: "bar",
+        data: { labels: acc.map(a => a.name), datasets: [{ label: "Value", data: acc.map(a => a.value_zar), backgroundColor: css("--series-1"),
+          borderRadius: 4, borderSkipped: "start", maxBarThickness: 22 }] },
+        options: { indexAxis: "y", maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip },
+          scales: { x: { ticks: { callback: randTick, maxTicksLimit: 5 } }, y: { grid: { display: false } } } },
+      });
+    }
+
     function renderEEOverview(s) {
       const ee = s.easyequities;
       $("#ee-overview").hidden = !ee;

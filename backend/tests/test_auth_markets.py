@@ -45,6 +45,9 @@ def test_schedule_event_runs_alerts(monkeypatch):
     import app.invest.ee.sync as ee_sync
 
     monkeypatch.setattr(alerts, "check_all", lambda db: 3)
+    import app.invest.portfolio as portfolio
+
     monkeypatch.setattr(ee_sync, "sync_all", lambda db: 1)
+    monkeypatch.setattr(portfolio, "record_all", lambda db: 2)
     assert handler({"source": "aws.events", "detail-type": "Scheduled Event"}, None) == \
-        {"easyequities_synced": 1, "alerts_sent": 3}
+        {"easyequities_synced": 1, "alerts_sent": 3, "snapshots": 2}

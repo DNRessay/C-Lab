@@ -97,3 +97,16 @@ class PriceCache(Base):
     history: Mapped[list] = mapped_column(JSON, default=list, nullable=False)  # [[iso_date, close], ...]
     error: Mapped[str] = mapped_column(Text, default="", nullable=False)
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
+class PortfolioSnapshot(Base):
+    """One row per user per day: what the portfolio was worth, for the 'worth over time' chart."""
+
+    __tablename__ = "invest_snapshots"
+    __table_args__ = (UniqueConstraint("user_id", "date"),)
+    id: Mapped[int] = pk()
+    user_id: Mapped[int] = user_fk()
+    date: Mapped[dt.date] = mapped_column(Date, nullable=False, index=True)
+    value: Mapped[Decimal] = mapped_column(Money, default=0, nullable=False)
+    invested: Mapped[Decimal] = mapped_column(Money, default=0, nullable=False)
+    net_worth: Mapped[Decimal] = mapped_column(Money, default=0, nullable=False)

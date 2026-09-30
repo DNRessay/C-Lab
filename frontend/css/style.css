@@ -1,39 +1,32 @@
 :root {
-  --bg: #f6f7f9;
-  --panel: #ffffff;
-  --border: #e2e5ea;
-  --text: #16181d;
-  --muted: #6a7280;
-  --accent: #2f5bea;
-  --accent-text: #ffffff;
-  --ok: #17864f;
-  --ok-bg: #e5f6ec;
-  --warn: #9a6400;
-  --warn-bg: #fff4dc;
-  --err: #c0362c;
-  --err-bg: #fdeceb;
-  --input: #ffffff;
-  color-scheme: light;
+  /* Black and orange. One dark theme on purpose. */
+  --bg: #0a0a0b;
+  --panel: #141416;
+  --panel-2: #1b1b1e;
+  --border: #2a2a2e;
+  --line: rgba(249, 115, 22, 0.28);   /* orange lining on cards and inputs */
+  --text: #f4f4f5;
+  --muted: #a1a1aa;
+  --accent: #f97316;
+  --accent-strong: #ea580c;
+  --accent-soft: rgba(249, 115, 22, 0.14);
+  --accent-text: #0a0a0b;
+  --ok: #4ade80;
+  --ok-bg: rgba(74, 222, 128, 0.12);
+  --warn: #fbbf24;
+  --warn-bg: rgba(251, 191, 36, 0.12);
+  --err: #f87171;
+  --err-bg: rgba(248, 113, 113, 0.12);
+  --input: #0f0f11;
+  /* chart series (validated for the dark surface): worth, money put in */
+  --series-1: #ea580c;
+  --series-2: #3b82f6;
+  color-scheme: dark;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f1115;
-    --panel: #171a21;
-    --border: #2a2e38;
-    --text: #e7e9ee;
-    --muted: #9aa1ad;
-    --accent: #4f7cff;
-    --ok: #6fe3a4;
-    --ok-bg: rgba(53, 192, 122, 0.15);
-    --warn: #f5c56b;
-    --warn-bg: rgba(245, 197, 107, 0.13);
-    --err: #ff8f88;
-    --err-bg: rgba(229, 83, 75, 0.15);
-    --input: #0f1115;
-    color-scheme: dark;
-  }
-}
+::selection { background: var(--accent); color: var(--accent-text); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+html { accent-color: var(--accent); }
 
 * { box-sizing: border-box; }
 
@@ -46,7 +39,7 @@ body {
 
 a { color: var(--accent); }
 h1 { font-size: 1.5rem; margin: 0.5rem 0 1rem; }
-h2 { font-size: 1.15rem; margin: 1.5rem 0 0.6rem; }
+h2 { font-size: 1.15rem; margin: 1.5rem 0 0.6rem; color: var(--accent); }
 h3 { font-size: 1rem; margin: 0 0 0.8rem; }
 .muted { color: var(--muted); }
 
@@ -54,39 +47,58 @@ nav {
   position: sticky;
   top: 0;
   z-index: 10;
+  overflow: hidden;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem 1rem;
   padding: 0.6rem 1rem;
   background: var(--panel);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--line);
 }
-nav .brand { font-weight: 700; color: var(--text); text-decoration: none; }
-nav .tagline { font-size: 0.85rem; }
-nav .links { display: flex; flex-wrap: wrap; gap: 0.2rem 1.1rem; align-items: center; flex: 1; margin-left: 1rem; }
+nav .brand { position: relative; z-index: 1; font-weight: 800; color: var(--accent); text-decoration: none; letter-spacing: 0.02em; }
+/* "Charlie'$ Lab" sits behind the bar as faded orange lettering, not on top of anything. */
+nav .watermark {
+  position: absolute;
+  left: 4.2rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 2.1rem;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  color: var(--accent);
+  opacity: 0.13;
+  pointer-events: none;
+  user-select: none;
+  z-index: 0;
+}
+nav .links { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 0.2rem 1.1rem; align-items: center; flex: 1; margin-left: 1rem; }
 nav .links a { color: var(--muted); text-decoration: none; font-size: 0.92rem; padding: 0.35rem 0; border-bottom: 2px solid transparent; }
 nav .links a:hover { color: var(--text); }
-nav .links a.active { color: var(--text); font-weight: 600; border-bottom-color: var(--accent); }
+nav .links a.active { color: var(--accent); font-weight: 600; border-bottom-color: var(--accent); }
 nav #logout { margin-left: auto; }
 nav .menu {
   display: none;
   position: relative;
+  z-index: 1;
   width: 2.5rem;
   height: 2.5rem;
   margin-left: auto;
   padding: 0;
   background: transparent;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 8px;
 }
+nav .menu:hover:not(:disabled), nav .menu:active { background: var(--accent-soft); border-color: var(--accent); }
 nav .menu span {
   position: absolute;
   left: 25%;
   width: 50%;
   height: 2px;
   border-radius: 2px;
-  background: var(--text);
+  background: var(--accent);
   transition: transform 0.2s ease, opacity 0.2s ease, top 0.2s ease;
 }
 nav .menu span:nth-child(1) { top: 32%; }
@@ -97,12 +109,13 @@ nav.open .menu span:nth-child(2) { opacity: 0; }
 nav.open .menu span:nth-child(3) { top: calc(50% - 1px); transform: rotate(-45deg); }
 
 @media (max-width: 860px) {
-  nav .tagline { display: none; }
+  nav .watermark { font-size: 1.6rem; left: 4rem; top: 1.9rem; }
   nav .menu { display: inline-block; }
   nav .links { display: none; flex-basis: 100%; flex-direction: column; align-items: stretch; margin: 0.25rem 0 0.25rem; gap: 0; }
   nav.open .links { display: flex; }
   nav .links a { padding: 0.7rem 0.25rem; border-bottom: 1px solid var(--border); font-size: 1rem; }
   nav .links a.active { border-bottom-color: var(--border); color: var(--accent); }
+  nav.open .watermark { top: 1.9rem; transform: translateY(-50%); }
   nav #logout { margin: 0.75rem 0 0.25rem; align-self: flex-start; }
 }
 
@@ -111,7 +124,7 @@ main.narrow { max-width: 420px; margin-top: 3rem; }
 
 .card {
   background: var(--panel);
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 10px;
   padding: 1rem;
   margin-bottom: 1rem;
@@ -119,6 +132,7 @@ main.narrow { max-width: 420px; margin-top: 3rem; }
 .table-wrap { overflow-x: auto; }
 
 .grid { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.stat { border-left: 3px solid var(--accent); }
 .stat .value { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .stat .label { color: var(--muted); font-size: 0.85rem; }
 .row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
@@ -136,11 +150,12 @@ input, select, textarea, button {
   font: inherit;
   color: var(--text);
   background: var(--input);
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 6px;
   padding: 0.45rem 0.65rem;
   max-width: 100%;
 }
+input:focus, select:focus, textarea:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
 input[type="file"] { padding: 0.3rem; }
 button {
   background: var(--accent);
@@ -148,7 +163,10 @@ button {
   color: var(--accent-text);
   cursor: pointer;
 }
-button.secondary { background: transparent; color: var(--text); border-color: var(--border); }
+button { font-weight: 600; }
+button:hover:not(:disabled) { background: var(--accent-strong); border-color: var(--accent-strong); }
+button.secondary { background: transparent; color: var(--accent); border-color: var(--line); }
+button.secondary:hover:not(:disabled) { background: var(--accent-soft); border-color: var(--accent); }
 button.danger { background: var(--err); border-color: var(--err); color: #fff; }
 button.small { padding: 0.25rem 0.55rem; font-size: 0.85rem; }
 button:disabled { opacity: 0.55; cursor: progress; }
@@ -185,7 +203,12 @@ button:disabled { opacity: 0.55; cursor: progress; }
   border-radius: 6px;
   padding: 0.45rem 0.65rem;
 }
-.btn:hover { border-color: var(--accent); }
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+tbody tr:hover td { background: var(--accent-soft); }
+.chart-box { position: relative; height: 260px; }
+.chart-box.short { height: 200px; }
+.legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.85rem; color: var(--muted); margin-bottom: 0.4rem; }
+.legend i { display: inline-block; width: 0.8rem; height: 0.8rem; border-radius: 2px; margin-right: 0.35rem; vertical-align: -1px; }
 .btn.inline { display: inline-block; }
 nav #company { max-width: 14rem; }
 details summary { cursor: pointer; font-weight: 600; }

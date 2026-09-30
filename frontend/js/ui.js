@@ -71,7 +71,7 @@ export function page(links = []) {
   }
   const nav = $("#nav");
   if (!nav) return;
-  nav.innerHTML = `<a class="brand" href="/">C-Lab</a><span class="muted tagline">Charlie's Lab</span>
+  nav.innerHTML = `<span class="watermark" aria-hidden="true">Charlie'$ Lab</span><a class="brand" href="/">C-Lab</a>
     <button class="menu" aria-label="Open menu" aria-expanded="false"><span></span><span></span><span></span></button>
     <div class="links">${links.map(([id, label]) => `<a href="#${esc(id)}" data-tab="${esc(id)}">${esc(label)}</a>`).join("")}
       <button id="logout" class="secondary small">Log out</button></div>`;

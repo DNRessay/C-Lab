@@ -348,6 +348,8 @@ def test_connect_sync_and_portfolio(market):
     ep_total = 87.2068 * 1.35 + 150 * 1.32007
     assert s["easyequities"]["value"] == pytest.approx(2200.0 - 95.0 + ep_total)
     assert s["cash"] == 2200.0 - 1050.0 - 95.0  # wallet cash = account value - holdings
+    assert s["property_equity"] == pytest.approx(s["easyproperties_value"]) and s["easyproperties_value"] > 0
+    assert s["history"][-1]["value"] == pytest.approx(s["value"], abs=0.01) and len(s["history"]) == 1
     # The Edge bought by email is the same holding as the EasyProperties card, so it's counted once.
     assert [x["name"] for x in s["holdings"]].count("The Edge") == 1
     assert s["value"] == pytest.approx(1050.0 + ep_total + s["cash"])

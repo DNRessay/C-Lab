@@ -75,6 +75,7 @@ def handler(event, context):
     if isinstance(event, dict) and event.get("source") == "aws.events":
         from .invest.alerts import check_all
         from .invest.ee.sync import sync_all
+        from .invest.portfolio import record_all
 
         db = SessionLocal()
         try:
@@ -85,6 +86,7 @@ def handler(event, context):
                 logging.exception("Nightly EasyEquities sync failed")
                 db.rollback()
             result["alerts_sent"] = check_all(db)
+            result["snapshots"] = record_all(db)
             return result
         finally:
             db.close()

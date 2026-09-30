@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from . import prices
 from .ee.models import EEConnection
 from .ee.sync import platform_transactions, platform_view, rand_rate
-from .models import InvestTxn, ManualPrice, PropertyAsset
+from .models import InvestTxn, ManualPrice, PortfolioSnapshot, PropertyAsset
 
 ZERO = Decimal(0)
 
@@ -179,7 +179,12 @@ def summary(db: Session, user_id: int):
 
     props = [property_view(p) for p in db.scalars(select(PropertyAsset).where(PropertyAsset.user_id == user_id)
                                                   .order_by(PropertyAsset.name))]
+    physical_equity = sum(p["equity"] for p in props)
+    ep_value = sum(r["value"] for r in rows if r["asset_class"] == "easyproperties")
+    net_worth = portfolio_value + physical_equity
+    history = record_snapshot(db, user_id, portfolio_value, invested, net_worth) if (rows or props or txns) else []
     return {
+        "history": history,
         "holdings": rows,
         "cash": _f(cash),
         "invested": invested,
@@ -191,14 +196,31 @@ def summary(db: Session, user_id: int):
         "benchmarks": benchmarks,
         "allocation": {k: v for k, v in sorted(allocation.items(), key=lambda kv: -kv[1]) if v},
         "properties": props,
-        "property_equity": sum(p["equity"] for p in props),
-        "net_worth": portfolio_value + sum(p["equity"] for p in props),
+        # EasyProperties is property too; it's already inside the portfolio value, so net worth adds only own property.
+        "property_equity": physical_equity + ep_value,
+        "easyproperties_value": ep_value,
+        "net_worth": net_worth,
         "easyequities": {"value": ee_view["value_zar"], "taken_at": ee_view["taken_at"],
                          "accounts": [{k: a[k] for k in ("name", "currency", "value", "value_zar", "cash_zar", "cost_zar",
                                                          "warnings")} | {"holdings": len(a["holdings"])}
                                       for a in ee_view["accounts"]]}
         if ee_view else None,
     }
+
+
+def record_snapshot(db: Session, user_id: int, value, invested, net_worth):
+    """Keep today's numbers (last write of the day wins) and return the history for the chart."""
+    today = date.today()
+    row = db.scalar(select(PortfolioSnapshot).where(PortfolioSnapshot.user_id == user_id, PortfolioSnapshot.date == today))
+    if not row:
+        row = PortfolioSnapshot(user_id=user_id, date=today)
+        db.add(row)
+    row.value, row.invested, row.net_worth = round(value, 2), round(invested, 2), round(net_worth, 2)
+    db.commit()
+    rows = db.scalars(select(PortfolioSnapshot).where(PortfolioSnapshot.user_id == user_id)
+                      .order_by(PortfolioSnapshot.date.desc()).limit(730))
+    return [{"date": r.date.isoformat(), "value": float(r.value), "invested": float(r.invested),
+             "net_worth": float(r.net_worth)} for r in reversed(list(rows))]
 
 
 def _day(v):
@@ -248,3 +270,17 @@ def property_view(p: PropertyAsset):
         "growth": growth,
         "growth_per_year": ((1 + growth) ** (1 / years) - 1) if growth is not None and years and years >= 1 else None,
     }
+
+
+def record_all(db: Session):
+    """Nightly: compute (and so snapshot) every user's portfolio, so the chart grows even on days nobody looks."""
+    from ..models import User
+
+    done = 0
+    for uid in db.scalars(select(User.id).where(User.is_active.is_(True))):
+        try:
+            summary(db, uid)
+            done += 1
+        except Exception:
+            db.rollback()
+    return done

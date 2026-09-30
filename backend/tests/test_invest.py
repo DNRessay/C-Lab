@@ -139,7 +139,8 @@ def test_property(me):
     assert p["monthly_cashflow"] == 1000 and p["growth"] == pytest.approx(0.5)
     assert p["growth_per_year"] == pytest.approx(1.5 ** 0.25 - 1, abs=1e-3)
     s = api.get("/api/invest/summary", headers=me).json()
-    assert s["property_equity"] == 600000 and s["net_worth"] == pytest.approx(s["value"] + 600000)
+    assert s["property_equity"] == pytest.approx(600000 + s["easyproperties_value"])  # own property + EasyProperties
+    assert s["net_worth"] == pytest.approx(s["value"] + 600000)
 
 
 def test_watchlist_and_alerts(me, monkeypatch):
