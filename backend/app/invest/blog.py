@@ -312,7 +312,9 @@ def refresh(db: Session, limit=12):
     known = {u: (s, f) for u, s, f in db.execute(select(BlogPost.url, BlogPost.status, BlogPost.fetched_at))}
     day_ago = utcnow() - timedelta(days=1)
     newest_div = next((u for u in links if "dividend" in u.lower()), None)
-    todo = [u for u in links if u not in known or (known[u][1] < day_ago and (known[u][0] != "ok" or u == newest_div))]
+    empty = set(db.scalars(select(BlogPost.url).where(BlogPost.items == 0, BlogPost.kind != "news")))
+    todo = [u for u in links if u not in known or (known[u][1] < day_ago and (known[u][0] != "ok" or u == newest_div))
+            or (u in empty and known[u][1] < day_ago)]
     done = 0
     for url in todo[:limit]:
         try:
@@ -354,29 +356,36 @@ def matcher(names_and_symbols):
     return match
 
 
-def view(db: Session, holdings, watch):
-    """Latest posts and the dividends still to come (or just paid), each marked if you hold or watch it."""
+def view(db: Session, holdings, watch, days_back=45):
+    """Latest posts, and the dividends declared in them (still to come, or from the last few weeks), each marked if
+    you hold or watch it; for holdings, roughly what you'll get (units x amount)."""
     match = matcher([("hold", h.get("symbol"), h.get("name")) for h in holdings] +
                     [("watch", w.symbol, w.name) for w in watch])
+    units = {h.get("symbol"): h.get("quantity") for h in holdings}
     today = utcnow().date()
     posts = list(db.scalars(select(BlogPost).where(BlogPost.status == "ok").order_by(BlogPost.published.desc()).limit(12)))
     rows = db.execute(select(BlogDividend, BlogPost).join(BlogPost, BlogDividend.post_id == BlogPost.id)
-                      .where((BlogDividend.ldt >= today - timedelta(days=7)) | (BlogDividend.pay_date >= today))
-                      .order_by(BlogDividend.ldt)).all()
-    seen, upcoming = set(), []
+                      .where((BlogDividend.ldt >= today - timedelta(days=days_back)) | (BlogDividend.pay_date >= today))
+                      .order_by(BlogDividend.ldt.desc())).all()
+    seen, out = set(), []
     for d, p in rows:
         key = (d.account, norm(d.instrument), d.ldt)
         if key in seen:
             continue
         seen.add(key)
         m = match(d.instrument)
-        upcoming.append({"instrument": d.instrument, "account": d.account, "amount": d.amount, "currency": d.currency,
-                         "ldt": d.ldt.isoformat() if d.ldt else None, "pay_date": d.pay_date.isoformat() if d.pay_date else None,
-                         "mine": m[0] if m else "", "symbol": m[1] if m else "", "post": p.url,
-                         "can_buy": bool(d.ldt and d.ldt >= today)})
+        state = ("open" if d.ldt and d.ldt >= today else "paying" if d.pay_date and d.pay_date >= today else "paid")
+        qty = float(units.get(m[1]) or 0) if m and m[0] == "hold" else None
+        out.append({"instrument": d.instrument, "account": d.account, "amount": d.amount, "currency": d.currency,
+                    "ldt": d.ldt.isoformat() if d.ldt else None, "pay_date": d.pay_date.isoformat() if d.pay_date else None,
+                    "mine": m[0] if m else "", "symbol": m[1] if m else "", "post": p.url, "state": state,
+                    "can_buy": state == "open", "units": qty,
+                    "estimate": round(qty * d.amount, 2) if qty and d.amount is not None else None})
+    order = {"open": 0, "paying": 1, "paid": 2}
+    out.sort(key=lambda x: (not x["mine"], order[x["state"]], x["ldt"] or ""))
     return {"posts": [{"title": p.title, "url": p.url, "kind": p.kind, "published": p.published.isoformat() if p.published else None,
                        "summary": p.summary, "items": p.items} for p in posts],
-            "upcoming": upcoming}
+            "upcoming": out}
 
 
 def search_symbol(name: str, account: str = "ZAR"):

@@ -72,7 +72,8 @@ def test_blog_on_overview_and_watchlist(market, monkeypatch):
     v = api.get("/api/invest/blog", headers=h).json()
     assert {p["kind"] for p in v["posts"]} == {"weekly_dividends", "monthly_dividends"}
     names = {u["instrument"]: u for u in v["upcoming"]}
-    assert "Prescient Income Provider Feeder AMETF" not in names  # last day 15 Sept, paid 21 Sept: over by the 25th
+    assert names["Prescient Income Provider Feeder AMETF"]["state"] == "paid"  # last day 15 Sept, paid 21 Sept
+    assert names["Sirius Real Estate Ltd"]["state"] == "open"
     grt = names["Growthpoint Properties Ltd (GRT)"]
     assert (grt["mine"], grt["symbol"], grt["can_buy"]) == ("watch", "GRT.JO", True)
     s = api.get("/api/invest/summary", headers=h).json()

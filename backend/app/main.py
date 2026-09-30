@@ -142,6 +142,13 @@ def admin(event):
             return {"ok": True, "links": links[:40], "url": url, "title": title, "published": str(published),
                     "lines": lines[start:start + count], "total_lines": len(lines),
                     "parsed": [{**i, "ldt": str(i["ldt"]), "pay_date": str(i["pay_date"])} for i in blog.parse_dividends(lines)][:30]}
+        if event.get("action") == "refresh_blog":
+            from .invest import blog
+
+            if event.get("reread_empty"):
+                db.query(blog.BlogPost).filter(blog.BlogPost.items == 0, blog.BlogPost.kind != "news").delete()
+                db.commit()
+            return {"ok": True, **blog.refresh(db, limit=int(event.get("limit", 12)))}
         if event.get("action") == "bank_shape":
             from .banking import reader as bank_reader
 

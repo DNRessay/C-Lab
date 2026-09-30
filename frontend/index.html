@@ -62,11 +62,11 @@
         <div class="grid" id="ee-accounts"></div>
       </div>
       <div id="blog-wrap" hidden>
-        <h2>Dividends coming up</h2>
-        <p class="muted">From EasyEquities' weekly dividends update and monthly dividends list. Own it by the last day to trade to get paid.</p>
+        <h2>Dividends from EasyEquities</h2>
+        <p class="muted">Declared in EasyEquities' dividends updates. Own the share by the last day to trade to get paid. <span id="blog-note"></span></p>
         <div class="grid" id="blog-mine"></div>
         <div class="card table-wrap"><table>
-          <thead><tr><th>What</th><th class="num">Amount</th><th>Last day to trade</th><th>Paid</th></tr></thead>
+          <thead><tr><th>What</th><th class="num">Amount</th><th>Last day to trade</th><th>Paid</th><th>Status</th></tr></thead>
           <tbody id="blog-rows"></tbody>
         </table></div>
         <details class="section" id="blog-posts-wrap"><summary><span>Latest from EasyEquities</span><span class="count" id="cnt-blog"></span></summary>
@@ -1228,15 +1228,18 @@
     const MINE = { hold: ["you hold this", "ok"], watch: ["on your watchlist", ""] };
     const divAmt = (d) => d.amount == null ? "" : `${d.currency === "ZAR" ? "R" : d.currency === "USD" ? "$" : d.currency + " "}${amount(d.amount)}`;
     const dayOr = (d) => d ? day(d) : "—";
+    const STATE = { open: ["still open", "ok"], paying: ["being paid", ""], paid: ["paid", "muted"] };
     function renderBlog(b) {
       $("#blog-wrap").hidden = !(b && (b.upcoming.length || b.posts.length));
       if (!b) return;
       const mine = b.upcoming.filter(d => d.mine);
-      $("#blog-mine").innerHTML = mine.map(d => `<div class="card stat"><div class="value">${divAmt(d)}</div>
-        <div class="label"><strong>${esc(d.instrument)}</strong> ${badge(...MINE[d.mine])}<br>last day ${dayOr(d.ldt)} · paid ${dayOr(d.pay_date)}</div></div>`).join("");
-      $("#blog-rows").innerHTML = b.upcoming.slice(0, 40).map(d => `<tr><td>${esc(d.instrument)}<br><small class="muted">${esc(d.account)} account${d.mine ? " · " + MINE[d.mine][0] : ""}</small></td>
-        <td class="num">${divAmt(d)}</td><td>${dayOr(d.ldt)}${d.can_buy ? "" : ` ${badge("passed", "warn")}`}</td><td>${dayOr(d.pay_date)}</td></tr>`).join("")
-        || empty(4, "Nothing coming up in the latest posts.");
+      $("#blog-mine").innerHTML = mine.map(d => `<div class="card stat"><div class="value">${d.estimate != null ? money(d.estimate) : divAmt(d)}</div>
+        <div class="label"><strong>${esc(d.instrument)}</strong> ${badge(...MINE[d.mine])}<br>${d.estimate != null ? `${units(d.units)} × ${divAmt(d)} · ` : ""}${d.state === "open" ? `buy by ${dayOr(d.ldt)}` : d.state === "paying" ? `paid ${dayOr(d.pay_date)}` : `paid on ${dayOr(d.pay_date)}`}</div></div>`).join("");
+      const open = b.upcoming.filter(d => d.state === "open").length;
+      $("#blog-note").textContent = b.upcoming.length ? (open ? `${open} still open.` : "Nothing open right now; these are the latest declared.") : "";
+      $("#blog-rows").innerHTML = b.upcoming.slice(0, 50).map(d => `<tr class="${d.state === "paid" ? "dim" : ""}"><td>${esc(d.instrument)}<br><small class="muted">${esc(d.account)} account${d.mine ? " · " + MINE[d.mine][0] : ""}</small></td>
+        <td class="num">${divAmt(d)}</td><td>${dayOr(d.ldt)}</td><td>${dayOr(d.pay_date)}</td><td>${badge(...STATE[d.state])}</td></tr>`).join("")
+        || empty(5, "No dividends in the latest posts yet. The blog is checked every night.");
       $("#cnt-blog").textContent = b.posts.length;
       $("#blog-posts").innerHTML = b.posts.map(p => `<a class="card" href="${esc(p.url)}" target="_blank" rel="noopener">
         <strong>${esc(p.title)}</strong><br><small class="muted">${dayOr(p.published)}${p.items ? ` · ${p.items} dividends` : ""}</small>
@@ -1253,7 +1256,7 @@
       $("#picks").innerHTML = picks.map((d, i) => `<tr><td>${esc(d.instrument)}<br><small class="muted">${esc(d.account)} account</small></td>
         <td class="num">${divAmt(d)}</td><td>${dayOr(d.ldt)}</td><td>${dayOr(d.pay_date)}</td>
         <td>${d.mine ? badge(...MINE[d.mine]) : `<button class="small pick" data-i="${i}">Watch</button>`}</td></tr>`).join("")
-        || empty(5, "No picks open right now. The blog is checked every night.");
+        || empty(5, b.upcoming.length ? "Every dividend in the latest update is past its last day to trade. New ones arrive with the next update (checked nightly)." : "No dividends read from the blog yet. Tap \"Check the blog now\".");
       $$("#picks .pick").forEach(el => el.addEventListener("click", async () => {
         const d = picks[el.dataset.i];
         el.disabled = true;
