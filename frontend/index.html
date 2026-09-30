@@ -55,6 +55,30 @@
         </div>
       </div>
       <p class="muted" id="monthly-note"></p>
+      <div id="money-wrap" hidden>
+        <h2>Your money picture</h2>
+        <p class="muted" id="money-note">Banking next to your investments and property, month by month.</p>
+        <div class="chart-grid">
+          <div class="card">
+            <h3>Net worth over time</h3>
+            <div class="legend"><span><i style="background:var(--series-1)"></i>Investments</span><span><i style="background:var(--series-2)"></i>Bank</span><span><i style="background:var(--cat-3)"></i>Own property</span><span><i style="background:var(--neg)"></i>Debt</span><span><i style="background:var(--text)"></i>Net worth</span></div>
+            <div class="chart-box"><canvas id="nw-chart" role="img" aria-label="Investments, bank, property and debt per month with net worth"></canvas></div>
+          </div>
+          <div class="card">
+            <h3>Bank: money in and out</h3>
+            <div class="legend"><span><i style="background:var(--pos)"></i>In</span><span><i style="background:var(--neg)"></i>Out</span><span><i style="background:var(--series-1)"></i>Moved into investments</span></div>
+            <div class="chart-box short"><canvas id="bank-io-chart" role="img" aria-label="Bank money in and out per month, and money moved into investments"></canvas></div>
+          </div>
+          <div class="card">
+            <h3>Where your income went (12 months)</h3>
+            <div class="pie-row"><div class="pie-box"><canvas id="income-use-chart" role="img" aria-label="Income split into spending, investing, fees and kept"></canvas></div><ul class="pie-legend" id="income-use-legend"></ul></div>
+          </div>
+          <div class="card">
+            <h3>What your net worth is made of</h3>
+            <div class="chart-box short"><canvas id="nw-parts-chart" role="img" aria-label="Investments, property, bank and debt now"></canvas></div>
+          </div>
+        </div>
+      </div>
       <div id="sum-overview"></div>
       <div id="ee-overview" hidden>
         <h2>EasyEquities accounts</h2>
@@ -458,6 +482,7 @@
       const s = await api.investSummary();
       renderEEOverview(s);
       renderBlog(s.blog);
+      api.investMoney().then(mp => renderMoney(mp, s)).catch(e => flash(e.message, "err"));
       summaryOverview(s);
       summaryHoldings(s);
       renderCharts(s);
@@ -1433,6 +1458,51 @@
         best && ["Best year", esc(best.label), pct(best.change_1y)],
         worst && ["Worst year", esc(worst.label), pct(worst.change_1y)],
       ]);
+    }
+
+    // Money picture: banking next to investments and property.
+    function renderMoney(mp, s) {
+      const rows = mp.months.filter(r => r.investments || r.bank || r.debt || r.money_in || r.money_out);
+      $("#money-wrap").hidden = !rows.length && !(s.banking?.accounts);
+      if (!rows.length) return;
+      const labels = rows.map(r => monthLabel(r.month));
+      const bar = (label, data, colour) => ({ type: "bar", label, data, backgroundColor: colour, stack: "nw", borderRadius: 2, maxBarThickness: 22 });
+      chart("#nw-chart", {
+        data: { labels, datasets: [
+          bar("Investments", rows.map(r => r.investments), css("--series-1")),
+          bar("Bank", rows.map(r => r.bank), css("--series-2")),
+          bar("Own property", rows.map(r => r.property), css("--cat-3")),
+          bar("Debt", rows.map(r => -r.debt), css("--neg")),
+          { type: "line", label: "Net worth", data: rows.map(r => r.net_worth), borderColor: css("--text"), backgroundColor: css("--text"),
+            borderWidth: 2, pointRadius: rows.length < 20 ? 3 : 0, tension: 0.25 },
+        ] },
+        options: { maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+          plugins: { legend: { display: false }, tooltip: { ...tooltip, callbacks: { label: (c) => ` ${c.dataset.label}: ${money(Math.abs(c.parsed.y))}` } } },
+          scales: { x: { stacked: true, grid: { display: false }, ticks: { maxTicksLimit: 8 } }, y: { stacked: true, ticks: { callback: randTick, maxTicksLimit: 5 } } } },
+      });
+      chart("#bank-io-chart", {
+        data: { labels, datasets: [
+          { type: "bar", label: "In", data: rows.map(r => r.money_in), backgroundColor: css("--pos"), stack: "io", borderRadius: 3, maxBarThickness: 18 },
+          { type: "bar", label: "Out", data: rows.map(r => -r.money_out), backgroundColor: css("--neg"), stack: "io", borderRadius: 3, maxBarThickness: 18 },
+          { type: "line", label: "Moved into investments", data: rows.map(r => r.invested), borderColor: css("--series-1"), backgroundColor: css("--series-1"),
+            borderWidth: 2, pointRadius: 2, tension: 0.2 },
+        ] },
+        options: { maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+          plugins: { legend: { display: false }, tooltip: { ...tooltip, callbacks: { label: (c) => ` ${c.dataset.label}: ${money(Math.abs(c.parsed.y))}` } } },
+          scales: { x: { stacked: true, grid: { display: false }, ticks: { maxTicksLimit: 8 } }, y: { stacked: true, ticks: { callback: randTick, maxTicksLimit: 5 } } } },
+      });
+      const u = mp.income_12m;
+      const parts = [["Spent", u.spent], ["Invested", u.invested], ["Bank fees", u.fees], ["Kept in the bank", u.kept]]
+        .filter(([, v]) => v > 0).map(([label, value]) => ({ label, value }));
+      $("#income-use-chart").closest(".card").hidden = !parts.length;
+      if (parts.length) pie("#income-use-chart", "#income-use-legend", parts);
+      const inv = s.value, prop = s.property_equity - (s.easyproperties_value || 0), bank = s.banking?.cash || 0, debt = s.banking?.debt || 0;
+      hbar("#nw-parts-chart", ["Investments", "Own property", "Bank", "Debt"], [inv, prop, bank, -debt],
+        [css("--series-1"), css("--cat-3"), css("--series-2"), css("--neg")]);
+      const saved = u.income ? (u.invested + Math.max(0, u.kept)) / u.income : null;
+      $("#money-note").textContent = u.income
+        ? `Last 12 months: ${money(u.income)} came in; you spent ${money(u.spent)}, paid ${money(u.fees)} in bank fees and moved ${money(u.invested)} into investments${saved != null ? `, so about ${(saved * 100).toFixed(0)}% of your income was saved or invested` : ""}.`
+        : "Banking next to your investments and property, month by month.";
     }
 
     // pages

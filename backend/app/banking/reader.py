@@ -384,3 +384,40 @@ def read_all(db: Session):
             db.rollback()
             log.exception("Bank reader failed for user %s", conn.user_id)
     return n
+
+
+def month_balances(db: Session, user_id: int, months=24):
+    """Month-end money in the bank and card/loan debt, from each account's last balance in (or before) the month."""
+    accounts = {a.account: a for a in db.scalars(select(BankAccount).where(BankAccount.user_id == user_id))}
+    last = {}  # (account, month) -> balance on the last line of that month
+    for t in db.scalars(select(BankTxn).where(BankTxn.user_id == user_id, BankTxn.balance.is_not(None))
+                        .order_by(BankTxn.date, BankTxn.id)):
+        last[(t.account, t.date.strftime("%Y-%m"))] = t.balance
+    end = date.today().replace(day=1)
+    keys = []
+    y, m = end.year, end.month
+    for _ in range(months):
+        keys.append(f"{y:04d}-{m:02d}")
+        y, m = (y, m - 1) if m > 1 else (y - 1, 12)
+    keys.reverse()
+    first = {}
+    for (acc, month) in last:
+        first[acc] = min(first.get(acc, month), month)
+    out, carry = [], {}
+    earlier = sorted(k for k in last if k[1] < keys[0])
+    for acc, month in earlier:
+        carry[acc] = last[(acc, month)]
+    for k in keys:
+        cash = debt = 0.0
+        for acc, a in accounts.items():
+            if (acc, k) in last:
+                carry[acc] = last[(acc, k)]
+            if a.hidden or acc not in carry:
+                continue
+            bal = carry[acc]
+            if a.kind == "bank" and bal >= 0:
+                cash += bal
+            else:
+                debt += abs(bal)
+        out.append({"month": k, "cash": round(cash, 2), "debt": round(debt, 2)})
+    return out

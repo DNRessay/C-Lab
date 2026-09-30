@@ -424,3 +424,42 @@ def monthly(db: Session, user_id: int):
         y, mo = (y + 1, 1) if mo == 12 else (y, mo + 1)
     return {"months": months, **{k: [round(series[k][m], 5) for m in months]
                                  for k in ("money_in", "money_out", "buys", "sells", "income", "costs")}}
+
+
+def money_picture(db: Session, user_id: int, months=24):
+    """How banking relates to the rest, per month: investments' month-end worth (statements), bank balances and card
+    debt, bank money in/out and fees, and net money moved into EasyEquities. Plus where the last 12 months' income went."""
+    from ..banking.models import Liability
+    from ..banking.reader import charts as bank_charts, month_balances
+
+    balances = month_balances(db, user_id, months)
+    keys = [b["month"] for b in balances]
+    worth = {p["month"]: p["value"] for p in statement_history(db, user_id)}
+    moved = defaultdict(float)
+    for d, a in month_flows(db, user_id):
+        moved[d.strftime("%Y-%m")] += float(a)
+    flows = {m["month"]: m for m in bank_charts(db, user_id, months)["months"]}
+    manual_debt = sum(max(0.0, x.balance) for x in db.scalars(select(Liability).where(Liability.user_id == user_id)))
+    props = [property_view(p) for p in db.scalars(select(PropertyAsset).where(PropertyAsset.user_id == user_id))]
+    own_equity = sum(p["equity"] for p in props)
+
+    rows, last_worth = [], None
+    for b in balances:
+        k = b["month"]
+        last_worth = worth.get(k, last_worth)
+        f = flows.get(k, {})
+        inv = last_worth or 0.0
+        rows.append({"month": k, "investments": round(inv, 2), "bank": b["cash"], "debt": round(b["debt"] + manual_debt, 2),
+                     "property": round(own_equity, 2),
+                     "net_worth": round(inv + b["cash"] + own_equity - b["debt"] - manual_debt, 2),
+                     "money_in": f.get("in", 0.0), "money_out": f.get("out", 0.0), "fees": f.get("fees", 0.0),
+                     "invested": round(moved.get(k, 0.0), 2)})
+    last12 = rows[-12:]
+    income = sum(r["money_in"] for r in last12)
+    invested = sum(max(0.0, r["invested"]) for r in last12)
+    fees = sum(r["fees"] for r in last12)
+    spent = max(0.0, sum(r["money_out"] for r in last12) - fees)
+    kept = income - spent - fees - invested
+    return {"months": rows, "since": keys[0] if keys else None,
+            "income_12m": {"income": round(income, 2), "spent": round(spent, 2), "fees": round(fees, 2),
+                           "invested": round(invested, 2), "kept": round(kept, 2)}}

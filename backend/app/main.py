@@ -161,6 +161,16 @@ def admin(event):
             return {"ok": True, "deposits": float(sum(a for _, a in flows if a > 0)),
                     "withdrawals": float(sum(-a for _, a in flows if a < 0)), "lines": len(rows),
                     "labels": labels.most_common(40)}
+        if event.get("action") == "blog_view":
+            from .invest import blog
+            from .invest.models import PriceCache, WatchItem
+
+            v = blog.view(db, [], list(db.scalars(select(WatchItem).where(WatchItem.user_id == user.id))))
+            syms = [(s.instrument, s.symbol) for s in db.scalars(select(blog.BlogSymbol))][:60]
+            cached = {c.symbol: (float(c.price) if c.price is not None else None, c.currency, c.error[:60])
+                      for c in db.scalars(select(PriceCache).where(PriceCache.symbol.in_([x for _, x in syms if x])))}
+            return {"ok": True, "rows": [{k: d[k] for k in ("instrument", "account", "ticker", "price", "state")}
+                                         for d in v["upcoming"][:25]], "symbols": syms, "cached": cached}
         if event.get("action") == "refresh_blog":
             from .invest import blog
 

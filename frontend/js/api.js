@@ -91,6 +91,7 @@ export const api = {
   markets: () => get("/api/markets"),
   investSummary: () => get("/api/invest/summary"),
   investCharts: () => get("/api/invest/charts"),
+  investMoney: () => get("/api/invest/money"),
   investQuote: (symbol) => get(`/api/invest/quote/${encodeURIComponent(symbol)}`),
   investTxns: () => get("/api/invest/transactions"),
   addInvestTxn: (b) => post("/api/invest/transactions", b),

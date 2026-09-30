@@ -92,6 +92,15 @@ def test_bank_statements_from_gmail(monkeypatch):
     assert api.patch(f"/api/bank/accounts/{acc['id']}", headers=h, json={"kind": "credit"}).json()["kind"] == "credit"
     assert api.get("/api/bank", headers=h).json()["debt"] == 169061.0
 
+    mp = api.get("/api/invest/money", headers=h).json()
+    aug = next(r for r in mp["months"] if r["month"] == "2026-08")
+    sep = next(r for r in mp["months"] if r["month"] == "2026-09")
+    # The account was switched to a card above, so its month-end balances count as debt.
+    assert (aug["bank"], aug["debt"], sep["debt"]) == (0.0, 19241.0 + 150000.0, 19061.0 + 150000.0)
+    assert aug["money_in"] == 20000.0
+    assert mp["income_12m"]["income"] == 20000.0 and mp["income_12m"]["fees"] == 9.0
+    assert mp["months"][-1]["month"] == date.today().strftime("%Y-%m")
+
     other = register("nosy")
     assert api.get(f"/api/bank/statements/1/text", headers=other).status_code == 404
     first = next(s for s in api.get("/api/bank/statements", headers=h).json() if s["filename"] == "m1.pdf")
