@@ -1,0 +1,77 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: C-Lab API (FastAPI on Lambda via Function URL) with a nightly price-alert schedule
+
+Parameters:
+  SecretKey:
+    Type: String
+    NoEcho: true
+    MinLength: 32
+  DatabaseUrl:
+    Type: String
+    NoEcho: true
+    Description: Neon pooled URL, e.g. postgresql://user:pass@ep-xxx-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require
+  FrontendUrl:
+    Type: String
+    Default: https://c-lab.pages.dev
+  SignupEmails:
+    Type: String
+    Default: ""
+    Description: Comma-separated emails allowed to sign up after the first (owner) account.
+  EmailHost:
+    Type: String
+    Default: ""
+  EmailPort:
+    Type: String
+    Default: "587"
+  EmailHostUser:
+    Type: String
+    Default: ""
+  EmailHostPassword:
+    Type: String
+    NoEcho: true
+    Default: ""
+  DefaultFromEmail:
+    Type: String
+    Default: "C-Lab <noreply@example.com>"
+
+Resources:
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: python3.12
+      CodeUri: .
+      Handler: app.main.handler
+      MemorySize: 1024
+      Timeout: 120
+      Architectures: [x86_64]
+      Environment:
+        Variables:
+          SECRET_KEY: !Ref SecretKey
+          DATABASE_URL: !Ref DatabaseUrl
+          FRONTEND_URL: !Ref FrontendUrl
+          SIGNUP_EMAILS: !Ref SignupEmails
+          EMAIL_HOST: !Ref EmailHost
+          EMAIL_PORT: !Ref EmailPort
+          EMAIL_HOST_USER: !Ref EmailHostUser
+          EMAIL_HOST_PASSWORD: !Ref EmailHostPassword
+          DEFAULT_FROM_EMAIL: !Ref DefaultFromEmail
+      FunctionUrlConfig:
+        AuthType: NONE
+      Events:
+        NightlyAlerts:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 16 * * ? *) # 18:00 SAST, after the JSE close
+
+  ApiFunctionUrlInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ApiFunction
+      Action: lambda:InvokeFunction
+      Principal: "*"
+      InvokedViaFunctionUrl: true
+
+Outputs:
+  ApiUrl:
+    Value: !GetAtt ApiFunctionUrl.FunctionUrl

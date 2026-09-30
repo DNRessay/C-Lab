@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Create account — C-Lab</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <main class="narrow">
+    <div class="card">
+      <h1>Create your C-Lab account</h1>
+      <p class="muted">The first account created owns this app. After that, sign-up is closed except for emails the owner allows.</p>
+      <div id="msg"></div>
+      <form id="form">
+        <div class="fields">
+          <div class="field"><label>First name</label><input name="first_name" required /></div>
+          <div class="field"><label>Last name</label><input name="last_name" /></div>
+        </div>
+        <div class="field"><label>Email</label><input name="email" type="email" required autocomplete="email" /></div>
+        <div class="field"><label>Password</label><input name="password" type="password" required minlength="8" autocomplete="new-password" /></div>
+        <button type="submit" style="width:100%">Create account</button>
+      </form>
+      <p class="muted" style="font-size:0.85rem"><a href="/login.html">Back to log in</a></p>
+    </div>
+  </main>
+  <script type="module">
+    import { api, tokens } from "/js/api.js";
+    import { $, flash, guestPage, onSubmit } from "/js/ui.js";
+    guestPage();
+    onSubmit($("#form"), async (d) => {
+      try {
+        const r = await api.register(d);
+        tokens.set(r.access, r.refresh);
+        location.href = "/";
+      } catch (e) { flash(e.message, "err"); }
+    });
+  </script>
+</body>
+</html>

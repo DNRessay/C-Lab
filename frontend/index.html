@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>C-Lab — Charlie's Lab</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/css/style.css" />
+  <style>
+    .bar { height: 0.5rem; background: var(--border); border-radius: 999px; overflow: hidden; min-width: 80px; }
+    .bar > span { display: block; height: 100%; background: var(--accent); }
+    .big { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+    section[hidden] { display: none; }
+  </style>
+</head>
+<body>
+  <nav id="nav"></nav>
+  <main>
+    <p class="muted" style="margin-top:0">Prices come from the public market feed (delayed). A personal tracker, not financial advice.</p>
+    <div id="msg"></div>
+    <div class="tabs" id="tabs">
+      <button class="secondary small active" data-tab="markets">Markets</button>
+      <button class="secondary small" data-tab="overview">Portfolio</button>
+      <button class="secondary small" data-tab="holdings">Holdings</button>
+      <button class="secondary small" data-tab="transactions">Transactions</button>
+      <button class="secondary small" data-tab="watchlist">Watchlist</button>
+      <button class="secondary small" data-tab="property">Property</button>
+      <button class="secondary small" data-tab="account">Account</button>
+    </div>
+
+    <!-- Markets -->
+    <section id="markets">
+      <div class="card table-wrap"><table>
+        <thead><tr><th>Market</th><th class="num">Now</th><th class="num">Day</th><th class="num">Month</th><th class="num">Year</th><th class="num">52w range</th></tr></thead>
+        <tbody id="market-rows"></tbody>
+      </table></div>
+      <p class="muted">Rand pairs show rand per 1 unit of the foreign currency, so a rising number means a weaker rand.</p>
+    </section>
+
+    <!-- Overview -->
+    <section id="overview" hidden>
+      <div class="grid" id="kpis"></div>
+      <h2>Same money, other choices</h2>
+      <p class="muted" id="bench-note"></p>
+      <div class="card table-wrap"><table>
+        <thead><tr><th></th><th class="num">Worth now</th><th class="num">Gain</th><th class="num">Return</th></tr></thead>
+        <tbody id="bench"></tbody>
+      </table></div>
+      <h2>Where it sits</h2>
+      <div class="card table-wrap"><table><tbody id="alloc"></tbody></table></div>
+    </section>
+
+    <!-- Holdings -->
+    <section id="holdings" hidden>
+      <div class="card table-wrap"><table>
+        <thead><tr><th>Holding</th><th class="num">Units</th><th class="num">Avg cost</th><th class="num">Price</th><th class="num">Value</th><th class="num">Gain</th><th class="num">Dividends</th><th></th></tr></thead>
+        <tbody id="holding-rows"></tbody>
+      </table></div>
+      <p class="muted">No market price (e.g. EasyProperties)? Use "Set price" to enter the latest price from your EasyEquities app.</p>
+    </section>
+
+    <!-- Transactions -->
+    <section id="transactions" hidden>
+      <div class="card">
+        <h3>Add a transaction</h3>
+        <form id="txn-form">
+          <div class="fields">
+            <div class="field"><label>Date</label><input name="date" type="date" required /></div>
+            <div class="field"><label>Type</label>
+              <select name="kind">
+                <option value="buy">Buy</option><option value="sell">Sell</option><option value="dividend">Dividend</option>
+                <option value="deposit">Deposit (money in)</option><option value="withdrawal">Withdrawal (money out)</option>
+                <option value="fee">Fee</option><option value="interest">Interest</option>
+              </select></div>
+            <div class="field sym"><label>Symbol</label><input name="symbol" placeholder="e.g. GRT.JO" /></div>
+            <div class="field sym"><label>Kind of asset</label>
+              <select name="asset_class"><option value="share">Share</option><option value="etf">ETF</option><option value="reit">REIT / property share</option>
+                <option value="easyproperties">EasyProperties</option><option value="crypto">Crypto</option><option value="other">Other</option></select></div>
+            <div class="field trade"><label>Units</label><input name="quantity" type="number" step="any" min="0" /></div>
+            <div class="field trade"><label>Price per unit (R)</label><input name="price" type="number" step="any" min="0" /></div>
+            <div class="field"><label>Amount (R)</label><input name="amount" type="number" step="0.01" min="0" placeholder="auto for buy/sell" /></div>
+            <div class="field trade"><label>Fees (R)</label><input name="fees" type="number" step="0.01" min="0" /></div>
+          </div>
+          <button type="submit">Add</button>
+        </form>
+      </div>
+      <div class="card">
+        <h3>Import from CSV</h3>
+        <form id="csv-form" class="row">
+          <input type="file" name="file" accept=".csv" required class="grow" />
+          <button type="submit" class="secondary">Import</button>
+        </form>
+        <p><a href="#" id="template">Download the template</a>. EasyEquities exports can be mapped to this layout.</p>
+      </div>
+      <div class="card table-wrap"><table>
+        <thead><tr><th>Date</th><th>Type</th><th>Holding</th><th class="num">Units</th><th class="num">Price</th><th class="num">Amount</th><th></th></tr></thead>
+        <tbody id="txn-rows"></tbody>
+      </table></div>
+    </section>
+
+    <!-- Watchlist -->
+    <section id="watchlist" hidden>
+      <div class="card">
+        <form id="watch-form" class="row">
+          <input name="symbol" placeholder="Symbol, e.g. RDF.JO" required style="width:10rem" />
+          <select name="asset_class"><option value="share">Share</option><option value="reit">REIT</option><option value="etf">ETF</option><option value="other">Other</option></select>
+          <input name="alert_below" type="number" step="any" placeholder="Alert below R" style="width:9rem" />
+          <input name="alert_above" type="number" step="any" placeholder="Alert above R" style="width:9rem" />
+          <button type="submit">Watch</button>
+        </form>
+        <p class="muted" style="margin:0.5rem 0 0">JSE symbols end in <code>.JO</code>. Property shares to try: GRT.JO (Growthpoint), RDF.JO (Redefine), FFB.JO (Fortress), VKE.JO (Vukile), STXPRO.JO (Satrix Property ETF). Alerts are checked nightly and emailed to you.</p>
+      </div>
+      <div class="card table-wrap"><table>
+        <thead><tr><th>Symbol</th><th class="num">Price</th><th class="num">Day</th><th class="num">Month</th><th class="num">Year</th><th class="num">Div. yield</th><th class="num">52w range</th><th>Alerts</th><th></th></tr></thead>
+        <tbody id="watch-rows"></tbody>
+      </table></div>
+    </section>
+
+    <!-- Property -->
+    <section id="property" hidden>
+      <div class="card table-wrap"><table>
+        <thead><tr><th>Property</th><th class="num">Value</th><th class="num">Bond</th><th class="num">Equity</th><th class="num">Net yield</th><th class="num">Cash / month</th><th class="num">Growth / yr</th><th></th></tr></thead>
+        <tbody id="prop-rows"></tbody>
+      </table></div>
+      <div class="card">
+        <h3 id="prop-title">Add a property</h3>
+        <form id="prop-form">
+          <input type="hidden" name="id" />
+          <div class="fields">
+            <div class="field"><label>Name</label><input name="name" required placeholder="e.g. Block L rental" /></div>
+            <div class="field"><label>Type</label><select name="kind"><option value="house">House</option><option value="flat">Flat</option><option value="land">Land</option><option value="commercial">Commercial</option></select></div>
+            <div class="field"><label>Bought on</label><input name="purchase_date" type="date" /></div>
+            <div class="field"><label>Bought for (R)</label><input name="purchase_price" type="number" step="0.01" min="0" /></div>
+            <div class="field"><label>Worth now (R)</label><input name="valuation" type="number" step="0.01" min="0" /></div>
+            <div class="field"><label>Valued on</label><input name="valuation_date" type="date" /></div>
+            <div class="field"><label>Bond owing (R)</label><input name="bond_balance" type="number" step="0.01" min="0" /></div>
+            <div class="field"><label>Bond payment / month (R)</label><input name="monthly_bond_payment" type="number" step="0.01" min="0" /></div>
+            <div class="field"><label>Rent / month (R)</label><input name="monthly_rent" type="number" step="0.01" min="0" /></div>
+            <div class="field"><label>Costs / month (R)</label><input name="monthly_costs" type="number" step="0.01" min="0" placeholder="rates, levies, insurance, upkeep" /></div>
+          </div>
+          <div class="field"><label>Notes</label><input name="notes" /></div>
+          <div class="row"><button type="submit">Save</button><button type="button" id="prop-cancel" class="secondary" hidden>Cancel</button></div>
+        </form>
+      </div>
+    </section>
+    <!-- Account -->
+    <section id="account" hidden>
+      <div class="card">
+        <h3 id="who"></h3>
+        <form id="pw-form">
+          <div class="fields">
+            <div class="field"><label>Current password</label><input name="old_password" type="password" required autocomplete="current-password" /></div>
+            <div class="field"><label>New password</label><input name="new_password" type="password" required minlength="8" autocomplete="new-password" /></div>
+          </div>
+          <button type="submit">Change password</button>
+        </form>
+      </div>
+    </section>
+  </main>
+  <script type="module">
+    import { api } from "/js/api.js";
+    import { $, $$, badge, download, empty, esc, flash, money, onSubmit, page, pct } from "/js/ui.js";
+    page();
+
+    const CLASS = { share: "Shares", etf: "ETFs", reit: "Property shares", easyproperties: "EasyProperties", crypto: "Crypto", other: "Other", cash: "Cash" };
+    const TYPE = { buy: "Buy", sell: "Sell", dividend: "Dividend", deposit: "Deposit", withdrawal: "Withdrawal", fee: "Fee", interest: "Interest" };
+    const signed = (v) => `<span class="${v < 0 ? "neg" : "pos"}">${money(v)}</span>`;
+    const pctCell = (v) => `<td class="num ${v == null ? "" : v < 0 ? "neg" : "pos"}">${pct(v)}</td>`;
+    const units = (v) => v == null ? "" : Number(v).toLocaleString("en-ZA", { maximumFractionDigits: 4 });
+
+    // tabs
+    $$("#tabs button").forEach(b => b.addEventListener("click", () => {
+      $$("#tabs button").forEach(x => x.classList.toggle("active", x === b));
+      $$("main section").forEach(s => s.hidden = s.id !== b.dataset.tab);
+      ({ markets: loadMarkets, overview: loadSummary, holdings: loadSummary, transactions: loadTxns, watchlist: loadWatch,
+         property: loadProps, account: loadAccount })[b.dataset.tab]()
+        .catch(e => flash(e.message, "err"));
+    }));
+
+    async function loadSummary() {
+      const s = await api.investSummary();
+      const kpi = (label, value, sub = "") => `<div class="card stat"><div class="value">${value}</div><div class="label">${label}${sub ? `<br>${sub}` : ""}</div></div>`;
+      $("#kpis").innerHTML =
+        kpi("Portfolio worth", money(s.value), s.cash != null ? `incl. ${money(s.cash)} cash` : "") +
+        kpi("Money put in", money(s.invested), s.since ? `since ${s.since}` : "") +
+        kpi("Gain", signed(s.gain), pct(s.return_pct)) +
+        kpi("Property equity", money(s.property_equity)) +
+        kpi("Net worth (tracked)", money(s.net_worth));
+
+      $("#bench-note").textContent = s.invested
+        ? "If every rand you put in had gone into these instead, on the same days (price growth only, dividends not included):"
+        : "Add your deposits or buys to see this.";
+      const maxV = Math.max(s.value, ...s.benchmarks.map(b => b.value), 1);
+      const row = (label, v, gain, ret, strong) => `<tr><td>${strong ? `<strong>${label}</strong>` : label}<div class="bar"><span style="width:${Math.max(0, v / maxV * 100)}%"></span></div></td>
+        <td class="num">${money(v)}</td><td class="num">${signed(gain)}</td>${pctCell(ret)}</tr>`;
+      $("#bench").innerHTML = s.invested ? row("Your portfolio", s.value, s.gain, s.return_pct, true) +
+        s.benchmarks.map(b => row(esc(b.label), b.value, b.gain, b.return_pct)).join("") : empty(4, "Nothing to compare yet.");
+
+      const total = Object.values(s.allocation).reduce((a, b) => a + b, 0) || 1;
+      $("#alloc").innerHTML = Object.entries(s.allocation).map(([k, v]) => `<tr><td>${CLASS[k] || esc(k)}<div class="bar"><span style="width:${v / total * 100}%"></span></div></td>
+        <td class="num">${money(v)}</td><td class="num">${(v / total * 100).toFixed(0)}%</td></tr>`).join("") || empty(3, "No holdings yet.");
+
+      $("#holding-rows").innerHTML = s.holdings.map(h => `<tr>
+        <td><strong>${esc(h.symbol)}</strong><br><small class="muted">${esc(h.name)} · ${CLASS[h.asset_class] || esc(h.asset_class)}</small></td>
+        <td class="num">${units(h.quantity)}</td><td class="num">${money(h.avg_cost)}</td>
+        <td class="num">${money(h.price)}<br><small class="muted">${esc(h.price_source)}</small></td>
+        <td class="num">${money(h.value)}</td>
+        <td class="num">${signed(h.gain)}<br><small>${pct(h.gain_pct)}</small></td>
+        <td class="num">${money(h.dividends)}</td>
+        <td><button class="secondary small setprice" data-s="${esc(h.symbol)}">Set price</button></td></tr>`).join("") || empty(8, "No holdings yet — add transactions first.");
+      $$(".setprice").forEach(b => b.addEventListener("click", async () => {
+        const v = prompt(`Latest price for ${b.dataset.s} in rand (leave empty to go back to the market price):`);
+        if (v === null) return;
+        try {
+          if (v.trim()) await api.setManualPrice(b.dataset.s, v.trim()); else await api.clearManualPrice(b.dataset.s);
+          loadSummary();
+        } catch (e) { flash(e.message, "err"); }
+      }));
+    }
+
+    // transactions
+    const txnForm = $("#txn-form");
+    txnForm.date.valueAsDate = new Date();
+    const syncTxnFields = () => {
+      const k = txnForm.kind.value, trade = ["buy", "sell"].includes(k);
+      $$(".trade", txnForm).forEach(f => f.hidden = !trade);
+      $$(".sym", txnForm).forEach(f => f.hidden = !(trade || k === "dividend"));
+      txnForm.amount.placeholder = trade ? "auto: units × price" : "";
+    };
+    txnForm.kind.addEventListener("change", syncTxnFields);
+    syncTxnFields();
+
+    async function loadTxns() {
+      const rows = await api.investTxns();
+      $("#txn-rows").innerHTML = rows.map(t => `<tr><td>${t.date}</td><td>${TYPE[t.kind] || esc(t.kind)}</td>
+        <td>${esc(t.symbol)}${t.name ? `<br><small class="muted">${esc(t.name)}</small>` : ""}</td>
+        <td class="num">${units(t.quantity)}</td><td class="num">${t.price != null ? money(t.price) : ""}</td><td class="num">${money(t.amount)}</td>
+        <td><button class="secondary small del" data-id="${t.id}">Delete</button></td></tr>`).join("") || empty(7, "No transactions yet.");
+      $$("#txn-rows .del").forEach(b => b.addEventListener("click", async () => {
+        if (!confirm("Delete this transaction?")) return;
+        try { await api.deleteInvestTxn(b.dataset.id); loadTxns(); } catch (e) { flash(e.message, "err"); }
+      }));
+    }
+    onSubmit(txnForm, async (d) => {
+      const trade = ["buy", "sell"].includes(d.kind);
+      const body = { date: d.date, kind: d.kind, amount: d.amount || null, fees: trade ? d.fees || 0 : 0 };
+      if (trade || d.kind === "dividend") Object.assign(body, { symbol: d.symbol, asset_class: d.asset_class });
+      if (trade) Object.assign(body, { quantity: d.quantity || null, price: d.price || null });
+      await api.addInvestTxn(body);
+      flash("Added.");
+      txnForm.reset(); txnForm.date.valueAsDate = new Date(); syncTxnFields();
+      loadTxns();
+    });
+    onSubmit($("#csv-form"), async (_, e) => {
+      const r = await api.importInvestCsv(new FormData(e.target));
+      flash(`Imported ${r.imported}, skipped ${r.duplicates} already there.${r.errors.length ? " Problems: " + r.errors.join("; ") : ""}`, r.errors.length ? "warn" : "ok");
+      e.target.reset();
+      loadTxns();
+    });
+    $("#template").addEventListener("click", (e) => { e.preventDefault(); download(api.investTemplate(), "investments_template.csv").catch(err => flash(err.message, "err")); });
+
+    // watchlist
+    async function loadWatch() {
+      const rows = await api.watchlist();
+      $("#watch-rows").innerHTML = rows.map(w => `<tr>
+        <td><strong>${esc(w.symbol)}</strong><br><small class="muted">${esc(w.name)}</small></td>
+        <td class="num">${w.price != null ? money(w.price) : badge("no price", "warn")}</td>
+        ${pctCell(w.change_1d)}${pctCell(w.change_1m)}${pctCell(w.change_1y)}
+        <td class="num">${w.dividend_yield != null ? (w.dividend_yield * 100).toFixed(1) + "%" : "—"}</td>
+        <td class="num"><small>${w.low_52w != null ? `${money(w.low_52w)} – ${money(w.high_52w)}` : ""}</small></td>
+        <td><small>${w.alert_below != null ? `below ${money(w.alert_below)}<br>` : ""}${w.alert_above != null ? `above ${money(w.alert_above)}` : ""}</small></td>
+        <td class="row"><button class="secondary small alerts" data-id="${w.id}">Alerts</button><button class="secondary small del" data-id="${w.id}">Remove</button></td></tr>`).join("") || empty(9, "Nothing on your watchlist yet.");
+      $$("#watch-rows .del").forEach(b => b.addEventListener("click", async () => {
+        try { await api.deleteWatch(b.dataset.id); loadWatch(); } catch (e) { flash(e.message, "err"); }
+      }));
+      $$("#watch-rows .alerts").forEach(b => b.addEventListener("click", async () => {
+        const w = rows.find(r => r.id == b.dataset.id);
+        const below = prompt(`Email me when ${w.symbol} drops below R (empty = off):`, w.alert_below ?? "");
+        if (below === null) return;
+        const above = prompt(`Email me when ${w.symbol} rises above R (empty = off):`, w.alert_above ?? "");
+        if (above === null) return;
+        try { await api.updateWatch(w.id, { alert_below: below.trim() || null, alert_above: above.trim() || null }); loadWatch(); }
+        catch (e) { flash(e.message, "err"); }
+      }));
+    }
+    onSubmit($("#watch-form"), async (d, e) => {
+      await api.addWatch({ ...d, alert_below: d.alert_below || null, alert_above: d.alert_above || null });
+      e.target.reset();
+      loadWatch();
+    });
+
+    // property
+    const propForm = $("#prop-form");
+    let props = [];
+    async function loadProps() {
+      props = await api.properties();
+      $("#prop-rows").innerHTML = props.map(p => `<tr>
+        <td><strong>${esc(p.name)}</strong><br><small class="muted">${esc(p.kind)}${p.valuation_date ? ` · valued ${p.valuation_date}` : ""}</small></td>
+        <td class="num">${money(p.valuation)}</td><td class="num">${money(p.bond_balance)}</td><td class="num">${money(p.equity)}</td>
+        <td class="num">${p.net_yield != null ? (p.net_yield * 100).toFixed(1) + "%" : "—"}</td>
+        <td class="num">${signed(p.monthly_cashflow)}</td>${pctCell(p.growth_per_year)}
+        <td class="row"><button class="secondary small edit" data-id="${p.id}">Edit</button><button class="secondary small del" data-id="${p.id}">Delete</button></td></tr>`).join("") || empty(8, "No properties yet.");
+      $$("#prop-rows .edit").forEach(b => b.addEventListener("click", () => {
+        const p = props.find(x => x.id == b.dataset.id);
+        for (const el of propForm.elements) if (el.name && el.name in p) el.value = p[el.name] ?? "";
+        propForm.id.value = p.id;
+        $("#prop-title").textContent = `Edit ${p.name}`;
+        $("#prop-cancel").hidden = false;
+        propForm.scrollIntoView({ behavior: "smooth" });
+      }));
+      $$("#prop-rows .del").forEach(b => b.addEventListener("click", async () => {
+        if (!confirm("Delete this property?")) return;
+        try { await api.deleteProperty(b.dataset.id); loadProps(); } catch (e) { flash(e.message, "err"); }
+      }));
+    }
+    const resetProp = () => { propForm.reset(); propForm.id.value = ""; $("#prop-title").textContent = "Add a property"; $("#prop-cancel").hidden = true; };
+    $("#prop-cancel").addEventListener("click", resetProp);
+    onSubmit(propForm, async (d) => {
+      const id = d.id; delete d.id;
+      if (id) await api.updateProperty(id, d); else await api.addProperty(d);
+      flash("Saved.");
+      resetProp();
+      loadProps();
+    });
+
+    // markets
+    async function loadMarkets() {
+      const { markets } = await api.markets();
+      const fmt = (m, v) => v == null ? "—" : m.kind === "fx" ? `R ${v.toFixed(4)}` : m.symbol.endsWith(".JO") ? money(v) : v.toLocaleString("en-ZA", { maximumFractionDigits: 2 });
+      $("#market-rows").innerHTML = markets.map(m => `<tr>
+        <td><strong>${esc(m.label)}</strong><br><small class="muted">${esc(m.symbol)}</small></td>
+        <td class="num">${m.price != null ? fmt(m, m.price) : badge("no data", "warn")}</td>
+        ${pctCell(m.change_1d)}${pctCell(m.change_1m)}${pctCell(m.change_1y)}
+        <td class="num"><small>${m.low_52w != null ? `${fmt(m, m.low_52w)} – ${fmt(m, m.high_52w)}` : ""}</small></td></tr>`).join("");
+    }
+
+    // account
+    async function loadAccount() {
+      const me = await api.me();
+      $("#who").textContent = `${me.first_name} ${me.last_name} · ${me.email}`;
+    }
+    onSubmit($("#pw-form"), async (d, e) => { flash((await api.changePassword(d)).message); e.target.reset(); });
+
+    loadMarkets().catch(e => flash(e.message, "err"));
+  </script>
+</body>
+</html>
