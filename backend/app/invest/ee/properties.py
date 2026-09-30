@@ -29,7 +29,8 @@ def login(username, password, session=None):
     s = session or http.Session(**SESSION_KW)
     verifier, challenge = _pkce()
     query = urlencode({"client_id": CLIENT_ID, "redirect_uri": REDIRECT, "response_type": "code", "scope": SCOPE,
-                       "code_challenge": challenge, "code_challenge_method": "S256"})
+                       "code_challenge": challenge, "code_challenge_method": "S256",
+                       "state": secrets.token_urlsafe(16), "nonce": secrets.token_urlsafe(16)})
     try:
         r = s.get(f"{IDP}/connect/authorize?{query}", timeout=30)
     except Exception as e:
@@ -52,9 +53,13 @@ def login(username, password, session=None):
             raise PlatformError("easyproperties login", f"request failed ({e})")
         location = r.headers.get("location") or ""
         if location.startswith(REDIRECT):
-            code = parse_qs(urlparse(location).query).get("code", [""])[0]
+            parsed = urlparse(location)
+            params = {**parse_qs(parsed.fragment), **parse_qs(parsed.query)}  # code may come in the query or fragment
+            code = params.get("code", [""])[0]
             if not code:
-                raise PlatformError("easyproperties login", "EasyID returned without a code")
+                detail = {k: v[0][:120] for k, v in params.items() if k in ("error", "error_description", "error_uri")}
+                raise PlatformError("easyproperties login",
+                                    f"EasyID returned without a code ({detail or 'keys: ' + ','.join(params)})")
             break
         if r.status_code in (301, 302, 303, 307, 308) and location:
             url, method, body = urljoin(url, location), "get", None
