@@ -412,6 +412,8 @@ def test_statement_file_names_and_cost_types():
     accounts = {"EE1720926-7814224": "EasyEquities ZAR"}
     info = statement_info("EE1720926-7814224 Test User - Monthly Statement 2025-08-31.pdf", accounts)
     assert info == {"account": "EasyEquities ZAR", "account_number": "EE1720926-7814224", "kind": "monthly", "period": "2025-08"}
+    assert statement_info("EE1720926-7814224 Test User -Monthly Statement Aug26.pdf", accounts)["period"] == "2026-08"
+    assert statement_info("EE1720926-7814224 Test User - Tax Statement 2025_2026.pdf", accounts)["period"] == "2025/26"
     assert statement_info("EE1720926-11088540 Test User - Tax Statement 2025.pdf", accounts)["kind"] == "tax"
     assert statement_info("EE1720926-11088540 Test User - Tax Statement 2025.pdf", accounts)["account"] == "EE1720926-11088540"
     assert sync.cost_type("VAT on custody fee") == "VAT"
@@ -488,6 +490,28 @@ Date          Description                                          Amount       
 2025-08-20    EFT Deposit                                        1 676.00      1 687.02567
 Closing balance                                                                1 687.02567
 """
+
+
+def test_encrypted_pdf_opens_with_blank_password():
+    from pypdf import PdfWriter
+
+    from app.invest.ee import reader
+
+    w = PdfWriter()
+    w.add_blank_page(width=200, height=200)
+    w.encrypt(user_password="", owner_password="owner-secret")
+    buf = __import__("io").BytesIO()
+    w.write(buf)
+    text, pages = reader.pdf_text(buf.getvalue())
+    assert pages == 1
+    locked = PdfWriter()
+    locked.add_blank_page(width=200, height=200)
+    locked.encrypt(user_password="needs-this", owner_password="x")
+    buf2 = __import__("io").BytesIO()
+    locked.write(buf2)
+    with pytest.raises(ValueError):
+        reader.pdf_text(buf2.getvalue())
+    assert reader.pdf_text(buf2.getvalue(), extra_passwords=["needs-this"])[1] == 1
 
 
 def test_statement_line_parser():

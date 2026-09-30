@@ -25,11 +25,21 @@ DATE_RES = [
 AMOUNT = re.compile(r"\(?-?\s?(?:R|\$|£|€|ZAR|USD|GBP)?\s?-?\d{1,3}(?:[ ,]\d{3})*(?:\.\d+)?\)?|\(?-?\d+\.\d+\)?")
 
 
-def pdf_text(data: bytes):
+def pdf_text(data: bytes, extra_passwords=()):
     """(text, pages). Uses pypdf's layout mode so table columns stay on one line."""
     from pypdf import PdfReader
 
     reader = PdfReader(io.BytesIO(data))
+    if reader.is_encrypted:
+        # EasyEquities locks its statements; usually only against editing, so a blank password opens them.
+        for password in ("", *extra_passwords):
+            try:
+                if reader.decrypt(password):
+                    break
+            except Exception:
+                continue
+        else:
+            raise ValueError("statement is password-protected (blank password didn't open it)")
     pages = []
     for page in reader.pages:
         try:
@@ -129,7 +139,8 @@ def read_batch(db: Session, conn: EEConnection, limit=BATCH, client=None):
                                                              EEStatementDoc.status == "ok")))
     accounts = accounts_by_number(db, conn.user_id)
     todo = [(it, statement_info(it["name"], accounts)) for it in items if it["name"] not in done]
-    todo = sorted(todo, key=lambda x: x[1]["period"], reverse=True)[:limit]  # newest first
+    # monthly statements first (they hold the day-to-day lines), newest first
+    todo = sorted(todo, key=lambda x: (x[1]["kind"] == "monthly", x[1]["period"]), reverse=True)[:limit]
     if not todo:
         return {"read_now": 0, "left": 0, "lines_now": 0}
     p = client or platform.Platform()

@@ -206,12 +206,17 @@ def statement_info(name: str, accounts: dict):
     if m:
         period = f"{m.group(1)}-{m.group(2)}"
     else:
-        m = re.search(r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*[ _-]*(20\d{2})", name, re.I)
+        m = re.search(r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*[ _-]*(20\d{2}|\d{2})(?!\d)", name, re.I)
         if m:
-            period = f"{m.group(2)}-{MONTHS[m.group(1).lower()]:02d}"
+            year = m.group(2) if len(m.group(2)) == 4 else "20" + m.group(2)  # "Aug26" -> 2026
+            period = f"{year}-{MONTHS[m.group(1).lower()]:02d}"
         else:
-            m = re.search(r"(20\d{2})", name)
-            period = m.group(1) if m else ""
+            m = re.search(r"(20\d{2})[_/-](20\d{2})", name)  # tax year "2025_2026"
+            if m:
+                period = f"{m.group(1)}/{m.group(2)[2:]}"
+            else:
+                m = re.search(r"(20\d{2})", name)
+                period = m.group(1) if m else ""
     number = num.group(0) if num else ""
     return {"account": accounts.get(number) or number or "Other", "account_number": number, "kind": kind, "period": period}
 
