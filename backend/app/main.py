@@ -82,7 +82,8 @@ def admin(event):
 
     db = SessionLocal()
     try:
-        user = db.scalar(select(User).where(func.lower(User.email) == str(event.get("email", "")).lower()))
+        user = db.get(User, int(event["user_id"])) if event.get("user_id") else \
+            db.scalar(select(User).where(func.lower(User.email) == str(event.get("email", "")).lower()))
         if not user:
             return {"ok": False, "error": "no such user"}
         if event.get("action") == "set_pdf_password":
