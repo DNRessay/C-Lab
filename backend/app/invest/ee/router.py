@@ -125,6 +125,12 @@ def sync_now(user: User = Depends(current_user), db: Session = Depends(get_db)):
     return {**status(db, conn), "new_emails": added}
 
 
+@router.get("/transactions")
+def platform_transactions(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    rows = sync.platform_transactions(connection(db, user))
+    return {"rows": rows, "totals": sync.statement_totals(rows)}
+
+
 @router.post("/reparse")
 def reparse(user: User = Depends(current_user), db: Session = Depends(get_db)):
     return sync.reparse(db, user.id)

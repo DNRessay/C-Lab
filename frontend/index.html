@@ -30,6 +30,14 @@
     <!-- Overview -->
     <section id="overview" hidden>
       <div class="grid" id="kpis"></div>
+      <div id="ee-overview" hidden>
+        <h2>EasyEquities accounts</h2>
+        <div class="grid" id="ee-accounts"></div>
+      </div>
+      <div id="decisions-wrap" hidden>
+        <h2>Needs your decision</h2>
+        <div class="card table-wrap"><table><tbody id="ee-actions"></tbody></table></div>
+      </div>
       <h2>Same money, other choices</h2>
       <p class="muted" id="bench-note"></p>
       <div class="card table-wrap"><table>
@@ -42,27 +50,7 @@
 
     <!-- EasyEquities -->
     <section id="easyequities" hidden>
-      <div class="grid" id="ee-kpis"></div>
       <div class="card" id="ee-status"></div>
-      <div id="ee-accounts"></div>
-
-      <h2>Needs your decision</h2>
-      <div class="card table-wrap"><table><tbody id="ee-actions"></tbody></table></div>
-
-      <h2>From your EasyEquities emails</h2>
-      <div class="row" style="margin-bottom:0.6rem">
-        <select id="ee-kind">
-          <option value="">Everything</option><option value="trade">Trades</option><option value="order">Property orders</option>
-          <option value="deposit">Deposits</option><option value="withdrawal">Withdrawals</option>
-          <option value="corporate_action">Corporate actions</option><option value="bundle">Bundles</option><option value="notice">Other notices</option>
-        </select>
-        <button id="ee-reparse" class="secondary small">Re-read all emails</button>
-      </div>
-      <div class="card table-wrap"><table>
-        <thead><tr><th>Date</th><th>What</th><th>Holding</th><th>Account</th><th class="num">Units</th><th class="num">Price</th><th class="num">Amount</th><th class="num">Costs</th><th></th></tr></thead>
-        <tbody id="ee-mails"></tbody>
-      </table></div>
-
       <h2>Connections</h2>
       <div class="fields">
         <div class="card">
@@ -104,6 +92,46 @@
 
     <!-- Transactions -->
     <section id="transactions" hidden>
+      <h2 style="margin-top:0">Your transactions</h2>
+      <div class="card table-wrap"><table>
+        <thead><tr><th>Date</th><th>Type</th><th>Holding</th><th class="num">Units</th><th class="num">Price</th><th class="num">Amount</th><th></th></tr></thead>
+        <tbody id="txn-rows"></tbody>
+      </table></div>
+
+      <div id="stmt-wrap" hidden>
+        <h2>EasyEquities statement: dividends, fees and more</h2>
+        <p class="muted">Every line from EasyEquities' own transaction history, totalled per account and year. Fees and tax show as negative.</p>
+        <div class="card table-wrap"><table>
+          <thead><tr><th>Year</th><th>Account</th><th class="num">Dividends</th><th class="num">Interest</th><th class="num">Fees</th><th class="num">Tax</th><th class="num">Deposits</th><th class="num">Withdrawals</th><th class="num">Other</th></tr></thead>
+          <tbody id="stmt-totals"></tbody>
+        </table></div>
+        <div class="row" style="margin-bottom:0.6rem">
+          <select id="stmt-cat">
+            <option value="">All lines</option><option value="dividend">Dividends</option><option value="fee">Fees</option><option value="tax">Tax</option>
+            <option value="interest">Interest</option><option value="deposit">Deposits</option><option value="withdrawal">Withdrawals</option>
+            <option value="trade">Trades</option><option value="transfer">Transfers</option><option value="other">Other</option>
+          </select>
+          <select id="stmt-acc"><option value="">All accounts</option></select>
+        </div>
+        <div class="card table-wrap"><table>
+          <thead><tr><th>Date</th><th>Account</th><th>What</th><th>Details</th><th class="num">Amount</th></tr></thead>
+          <tbody id="stmt-rows"></tbody>
+        </table></div>
+      </div>
+
+      <h2>From your EasyEquities emails</h2>
+      <div class="row" style="margin-bottom:0.6rem">
+        <select id="ee-kind">
+          <option value="">Everything</option><option value="trade">Trades</option><option value="order">Property orders</option>
+          <option value="deposit">Deposits</option><option value="withdrawal">Withdrawals</option>
+          <option value="corporate_action">Corporate actions</option><option value="bundle">Bundles</option><option value="notice">Other notices</option>
+        </select>
+      </div>
+      <div class="card table-wrap"><table>
+        <thead><tr><th>Date</th><th>What</th><th>Holding</th><th>Account</th><th class="num">Units</th><th class="num">Price</th><th class="num">Amount</th><th class="num">Costs</th><th></th></tr></thead>
+        <tbody id="ee-mails"></tbody>
+      </table></div>
+      <h2>Add by hand</h2>
       <div class="card">
         <h3>Add a transaction</h3>
         <form id="txn-form">
@@ -135,10 +163,6 @@
         </form>
         <p><a href="#transactions" id="template">Download the template</a>. EasyEquities trades arrive here automatically once Gmail is connected on the EasyEquities page.</p>
       </div>
-      <div class="card table-wrap"><table>
-        <thead><tr><th>Date</th><th>Type</th><th>Holding</th><th class="num">Units</th><th class="num">Price</th><th class="num">Amount</th><th></th></tr></thead>
-        <tbody id="txn-rows"></tbody>
-      </table></div>
     </section>
 
     <!-- Watchlist -->
@@ -161,6 +185,14 @@
 
     <!-- Property -->
     <section id="property" hidden>
+      <div id="ep-wrap" hidden>
+        <h2 style="margin-top:0">EasyProperties</h2>
+        <div class="card table-wrap"><table>
+          <thead><tr><th>Property</th><th class="num">Units</th><th class="num">Price</th><th class="num">Value</th><th class="num">Bought for</th><th class="num">Gain</th></tr></thead>
+          <tbody id="ep-rows"></tbody>
+        </table></div>
+        <h2>Your own property</h2>
+      </div>
       <div class="card table-wrap"><table>
         <thead><tr><th>Property</th><th class="num">Value</th><th class="num">Bond</th><th class="num">Equity</th><th class="num">Net yield</th><th class="num">Cash / month</th><th class="num">Growth / yr</th><th></th></tr></thead>
         <tbody id="prop-rows"></tbody>
@@ -216,12 +248,15 @@
 
     async function loadSummary() {
       const s = await api.investSummary();
+      renderEEOverview(s);
+      loadDecisions().catch(e => flash(e.message, "err"));
       const kpi = (label, value, sub = "") => `<div class="card stat"><div class="value">${value}</div><div class="label">${label}${sub ? `<br>${sub}` : ""}</div></div>`;
       $("#kpis").innerHTML =
         kpi("Portfolio worth", money(s.value), s.cash != null ? `incl. ${money(s.cash)} cash` : "") +
-        kpi("Money put in", money(s.invested), s.since ? `since ${s.since}` : "") +
+        kpi(s.easyequities && !s.since ? "Cost of holdings + cash" : "Money put in", money(s.invested), s.since ? `since ${s.since}` : s.easyequities?.taken_at ? `EasyEquities, ${ago(s.easyequities.taken_at)}` : "") +
         kpi("Gain", signed(s.gain), pct(s.return_pct)) +
-        (s.easyequities ? kpi("EasyEquities says", money(s.easyequities.value), s.easyequities.taken_at ? `as of ${day(s.easyequities.taken_at)}` : "") : "") +
+        (s.income ? kpi("Dividends + interest", money(s.income.dividend + s.income.interest), "all time, from EasyEquities") +
+          kpi("Fees + tax paid", `<span class="neg">${money(s.income.fee + s.income.tax)}</span>`, `fees ${money(s.income.fee)} · tax ${money(s.income.tax)}`) : "") +
         kpi("Property equity", money(s.property_equity)) +
         kpi("Net worth (tracked)", money(s.net_worth));
 
@@ -239,13 +274,13 @@
         <td class="num">${money(v)}</td><td class="num">${(v / total * 100).toFixed(0)}%</td></tr>`).join("") || empty(3, "No holdings yet.");
 
       $("#holding-rows").innerHTML = s.holdings.map(h => `<tr>
-        <td><strong>${esc(h.symbol)}</strong><br><small class="muted">${esc(h.name)} · ${CLASS[h.asset_class] || esc(h.asset_class)}</small></td>
+        <td><strong>${esc(h.symbol)}</strong><br><small class="muted">${esc(h.name)} · ${CLASS[h.asset_class] || esc(h.asset_class)}${h.account ? ` · ${esc(h.account)}` : ""}</small></td>
         <td class="num">${units(h.quantity)}</td><td class="num">${money(h.avg_cost)}</td>
         <td class="num">${money(h.price)}<br><small class="muted">${esc(h.price_source)}</small></td>
         <td class="num">${money(h.value)}</td>
         <td class="num">${signed(h.gain)}<br><small>${pct(h.gain_pct)}</small></td>
         <td class="num">${money(h.dividends)}</td>
-        <td><button class="secondary small setprice" data-s="${esc(h.symbol)}">Set price</button></td></tr>`).join("") || empty(8, "No holdings yet — add transactions first.");
+        <td>${h.account ? "" : `<button class="secondary small setprice" data-s="${esc(h.symbol)}">Set price</button>`}</td></tr>`).join("") || empty(8, "No holdings yet — add transactions first.");
       $$(".setprice").forEach(b => b.addEventListener("click", async () => {
         const v = prompt(`Latest price for ${b.dataset.s} in rand (leave empty to go back to the market price):`);
         if (v === null) return;
@@ -269,6 +304,8 @@
     syncTxnFields();
 
     async function loadTxns() {
+      loadStatement().catch(e => flash(e.message, "err"));
+      loadEEMails().catch(e => flash(e.message, "err"));
       const rows = await api.investTxns();
       $("#txn-rows").innerHTML = rows.map(t => `<tr><td>${t.date}</td><td>${TYPE[t.kind] || esc(t.kind)}</td>
         <td>${esc(t.symbol)}${t.name ? `<br><small class="muted">${esc(t.name)}</small>` : ""}</td>
@@ -331,6 +368,13 @@
     const propForm = $("#prop-form");
     let props = [];
     async function loadProps() {
+      api.investSummary().then(s => {
+        const ep = s.holdings.filter(h => h.asset_class === "easyproperties");
+        $("#ep-wrap").hidden = !ep.length;
+        $("#ep-rows").innerHTML = ep.map(h => `<tr><td><strong>${esc(h.name)}</strong><br><small class="muted">${esc(h.account || h.symbol)}</small></td>
+          <td class="num">${units(h.quantity)}</td><td class="num">${money(h.price)}</td><td class="num">${money(h.value)}</td>
+          <td class="num">${money(h.cost)}</td><td class="num">${signed(h.gain)}<br><small>${pct(h.gain_pct)}</small></td></tr>`).join("");
+      }).catch(e => flash(e.message, "err"));
       props = await api.properties();
       $("#prop-rows").innerHTML = props.map(p => `<tr>
         <td><strong>${esc(p.name)}</strong><br><small class="muted">${esc(p.kind)}${p.valuation_date ? ` · valued ${p.valuation_date}` : ""}</small></td>
@@ -379,98 +423,119 @@
     }
     onSubmit($("#pw-form"), async (d, e) => { flash((await api.changePassword(d)).message); e.target.reset(); });
 
-    // EasyEquities
+    // EasyEquities (connections page)
     const KIND = { trade: ["Trade", ""], order: ["Property order", "warn"], deposit: ["Deposit", "ok"], withdrawal: ["Withdrawal", ""],
       corporate_action: ["Corporate action", "warn"], bundle: ["Bundle", ""], notice: ["Notice", ""] };
-    const cur = (v, c) => v == null ? "" : c && c !== "ZAR" ? `${c === "USD" ? "$" : c + " "}${Number(v).toFixed(2)}` : money(v);
+    const CAT = { dividend: ["Dividend", "ok"], interest: ["Interest", "ok"], fee: ["Fee", "err"], tax: ["Tax", "err"], deposit: ["Deposit", ""],
+      withdrawal: ["Withdrawal", ""], trade: ["Trade", ""], transfer: ["Transfer", ""], other: ["Other", "warn"] };
+    const cur = (v, c) => v == null ? "" : c && c !== "ZAR" ? `${Number(v) < 0 ? "-" : ""}${c === "USD" ? "$" : c === "GBP" ? "£" : c + " "}${Math.abs(Number(v)).toFixed(2)}` : money(v);
     const ago = (iso) => iso ? new Date(iso + "Z").toLocaleString("en-ZA", { dateStyle: "medium", timeStyle: "short" }) : "never";
 
-    function eeStatus(e) {
+    function renderEE(e) {
       const p = e.platform, m = e.mail;
-      const line = (label, c, ok, err, extra) => `<div style="margin-bottom:0.4rem"><strong>${label}</strong> ${
+      const line = (label, c, ok, err, extra) => `<div style="margin-bottom:0.5rem"><strong>${label}</strong> ${
         !c ? badge("not connected") : ok === "ok" ? badge("working", "ok") : ok === "error" ? badge("failing", "err") : badge("waiting")} ${extra}
         ${err ? `<div class="msg err" style="margin:0.4rem 0 0">${esc(err)}</div>` : ""}</div>`;
+      const warnings = e.accounts.flatMap(a => a.warnings.map(w => `${a.name}: ${w}`));
       $("#ee-status").innerHTML =
         line("EasyEquities login", p.connected, p.status, p.error ? `Stopped at "${p.error_stage}": ${p.error}. Showing the last good read from ${ago(p.synced_at)}.` : "",
-          p.connected ? `<small class="muted">${esc(p.username)} · last good read ${ago(p.synced_at)}</small>` : "") +
+          p.connected ? `<small class="muted">${esc(p.username)} · last good read ${ago(p.synced_at)} · ${e.accounts.length} account(s)</small>` : "") +
         line("Gmail", m.connected, m.status, m.error, m.connected ? `<small class="muted">${esc(m.address)} · checked ${ago(m.synced_at)}</small>` : "") +
-        `<button id="ee-sync" ${p.connected || m.connected ? "" : "disabled"}>Sync now</button>`;
+        (warnings.length ? `<div class="msg warn">${warnings.map(esc).join("<br>")}</div>` : "") +
+        `<div class="row"><button id="ee-sync" ${p.connected || m.connected ? "" : "disabled"}>Sync now</button>
+          <button id="ee-reparse" class="secondary" ${m.connected ? "" : "hidden"}>Re-read all emails</button></div>
+        <p class="muted" style="margin:0.6rem 0 0">Your EasyEquities numbers show on Portfolio, Holdings, Transactions and Property. Demo accounts are left out.</p>`;
       action($("#ee-sync"), async () => {
         const r = await api.eeSync();
         flash(`Synced.${r.new_emails ? ` ${r.new_emails} new email(s).` : ""}`);
-        renderEE(r); loadEEMails();
+        renderEE(r);
+      });
+      action($("#ee-reparse"), async () => {
+        const r = await api.eeReparse();
+        flash(`Re-read ${r.emails} emails: ${r.parsed} understood, ${r.imported} new transaction(s).`);
       });
       $("#ee-platform-off").hidden = !p.connected;
       $("#ee-mail-off").hidden = !m.connected;
       if (p.connected) $("#ee-platform-form").username.value = p.username;
       if (m.connected) $("#ee-mail-form").address.value = m.address;
     }
-
-    function renderEE(e) {
-      eeStatus(e);
-      const kpi = (label, value, sub = "") => `<div class="card stat"><div class="value">${value}</div><div class="label">${label}${sub ? `<br>${sub}` : ""}</div></div>`;
-      const cost = e.accounts.reduce((a, x) => a + x.cost_zar, 0);
-      $("#ee-kpis").innerHTML = e.accounts.length ? kpi("All accounts", money(e.value_zar), e.taken_at ? `as of ${ago(e.taken_at)}` : "") +
-        e.accounts.map(a => kpi(esc(a.name), money(a.value_zar), a.currency !== "ZAR" ? `${cur(a.value, a.currency)} at R ${a.rate.toFixed(2)}` : "")).join("") +
-        kpi("Gain on holdings", signed(e.accounts.reduce((a, x) => a + x.holdings.reduce((b, h) => b + h.gain_zar, 0), 0)), cost ? `on ${money(cost)} bought` : "") : "";
-      $("#ee-accounts").innerHTML = e.accounts.map(a => `<div class="card table-wrap"><h3>${esc(a.name)} <small class="muted">${money(a.value_zar)}</small></h3>
-        ${a.warnings.length ? `<div class="msg warn">${a.warnings.map(esc).join("<br>")}</div>` : ""}
-        <table><thead><tr><th>Holding</th><th class="num">Units</th><th class="num">Price</th><th class="num">Value</th><th class="num">Bought for</th><th class="num">Gain</th></tr></thead><tbody>
-        ${a.holdings.map(h => `<tr><td><strong>${esc(h.name)}</strong><br><small class="muted">${esc(h.contract_code || h.symbol)}</small></td>
-          <td class="num">${units(h.shares)}</td><td class="num">${cur(h.current_price, a.currency)}</td><td class="num">${cur(h.current_value, a.currency)}</td>
-          <td class="num">${cur(h.purchase_value, a.currency)}</td>
-          <td class="num">${signed(h.gain_zar)}<br><small>${pct(h.purchase_value ? h.current_value / h.purchase_value - 1 : null)}</small></td></tr>`).join("") || empty(6, "No holdings.")}
-        </tbody></table></div>`).join("");
-    }
-
-    async function loadEEMails() {
-      const rows = await api.eeMails($("#ee-kind").value);
-      const actions = rows.filter(m => m.kind === "corporate_action" && !m.done);
-      $("#ee-actions").innerHTML = actions.map(m => `<tr><td>${day(m.received_at)}</td><td><strong>${esc(m.instrument)}</strong><br><small class="muted">${esc(m.subject)}</small></td>
-        <td><div class="row"><button class="secondary small ee-open" data-id="${m.id}">Read</button><button class="secondary small ee-done" data-id="${m.id}">Dealt with</button></div></td></tr>`).join("")
-        || empty(3, "Nothing waiting on you.");
-      $("#ee-mails").innerHTML = rows.map(m => { const [label, cls] = KIND[m.kind] || [m.kind, ""]; return `<tr>
-        <td>${m.date || day(m.received_at)}</td>
-        <td>${badge(label + (m.side && m.kind !== "deposit" && m.kind !== "withdrawal" ? ` · ${m.side}` : ""), cls)}${m.txn_id ? "<br><small class='muted'>in transactions</small>" : ""}${!m.parsed && m.kind !== "notice" ? "<br><small class='neg'>couldn't read</small>" : ""}</td>
-        <td>${esc(m.instrument || m.subject)}</td><td><small>${esc(m.account)}</small></td>
-        <td class="num">${units(m.quantity)}</td><td class="num">${cur(m.price, m.currency)}</td>
-        <td class="num">${cur(m.value, m.currency)}</td><td class="num">${cur(m.costs, m.currency)}</td>
-        <td><button class="secondary small ee-open" data-id="${m.id}">Read</button></td></tr>`; }).join("") || empty(9, "No EasyEquities emails yet. Connect Gmail below.");
-      $$(".ee-open").forEach(b => b.addEventListener("click", async () => {
-        const m = await api.eeMail(b.dataset.id);
-        alert(`${m.subject}\n\n${m.body.slice(0, 3000)}`);
-      }));
-      $$(".ee-done").forEach(b => b.addEventListener("click", async () => {
-        try { await api.eeUpdateMail(b.dataset.id, { done: true }); loadEEMails(); } catch (e) { flash(e.message, "err"); }
-      }));
-    }
-    $("#ee-kind").addEventListener("change", () => loadEEMails().catch(e => flash(e.message, "err")));
-    action($("#ee-reparse"), async () => {
-      const r = await api.eeReparse();
-      flash(`Re-read ${r.emails} emails: ${r.parsed} understood, ${r.imported} new transaction(s).`);
-      loadEEMails();
-    });
-    async function loadEE() {
-      renderEE(await api.ee());
-      await loadEEMails();
-    }
+    const loadEE = async () => renderEE(await api.ee());
     onSubmit($("#ee-platform-form"), async (d, e) => {
       flash("Logging in to EasyEquities… this can take a minute.", "warn");
       const r = await api.eeConnectPlatform(d);
       e.target.password.value = "";
       renderEE(r);
-      flash(r.platform.status === "ok" ? "Connected. Your EasyEquities accounts are below." : `Saved, but the first read failed: ${r.platform.error}`, r.platform.status === "ok" ? "ok" : "err");
+      flash(r.platform.status === "ok" ? "Connected. See Portfolio, Holdings and Transactions." : `Saved, but the first read failed: ${r.platform.error}`, r.platform.status === "ok" ? "ok" : "err");
     });
     onSubmit($("#ee-mail-form"), async (d, e) => {
       flash("Reading your EasyEquities emails… the first time can take a minute.", "warn");
       const r = await api.eeConnectMail(d);
       e.target.app_password.value = "";
       renderEE(r);
-      flash(r.mail.status === "ok" ? "Gmail connected." : `Saved, but reading mail failed: ${r.mail.error}`, r.mail.status === "ok" ? "ok" : "err");
-      loadEEMails();
+      flash(r.mail.status === "ok" ? "Gmail connected. Email activity is on the Transactions page." : `Saved, but reading mail failed: ${r.mail.error}`, r.mail.status === "ok" ? "ok" : "err");
     });
     action($("#ee-platform-off"), async () => { if (confirm("Disconnect EasyEquities and forget the password?")) renderEE(await api.eeDisconnectPlatform()); });
     action($("#ee-mail-off"), async () => { if (confirm("Disconnect Gmail and forget the app password?")) renderEE(await api.eeDisconnectMail()); });
+
+    // EasyEquities data on the other pages
+    function renderEEOverview(s) {
+      const ee = s.easyequities;
+      $("#ee-overview").hidden = !ee;
+      if (!ee) return;
+      $("#ee-accounts").innerHTML = ee.accounts.map(a => `<div class="card stat"><div class="value">${money(a.value_zar)}</div>
+        <div class="label">${esc(a.name)}${a.currency !== "ZAR" ? ` · ${cur(a.value, a.currency)}` : ""}<br>
+        ${a.holdings} holding(s)${a.cash_zar >= 0.01 ? ` · ${money(a.cash_zar)} cash` : ""}${a.warnings.length ? `<br>${badge("check EasyEquities page", "warn")}` : ""}</div></div>`).join("");
+    }
+    async function loadDecisions() {
+      const rows = (await api.eeMails("corporate_action")).filter(m => !m.done);
+      $("#decisions-wrap").hidden = !rows.length;
+      $("#ee-actions").innerHTML = rows.map(m => `<tr><td>${day(m.received_at)}</td><td><strong>${esc(m.instrument)}</strong><br><small class="muted">${esc(m.subject)}</small></td>
+        <td><div class="row"><button class="secondary small ee-open" data-id="${m.id}">Read</button><button class="secondary small ee-done" data-id="${m.id}">Dealt with</button></div></td></tr>`).join("");
+      bindMailButtons(loadDecisions);
+    }
+    function bindMailButtons(reload) {
+      $$(".ee-open").forEach(b => b.onclick = async () => {
+        try { const m = await api.eeMail(b.dataset.id); alert(`${m.subject}\n\n${m.body.slice(0, 3000)}`); } catch (e) { flash(e.message, "err"); }
+      });
+      $$(".ee-done").forEach(b => b.onclick = async () => {
+        try { await api.eeUpdateMail(b.dataset.id, { done: true }); reload(); } catch (e) { flash(e.message, "err"); }
+      });
+    }
+
+    let stmt = { rows: [], totals: [] };
+    function renderStatement() {
+      const cat = $("#stmt-cat").value, acc = $("#stmt-acc").value;
+      const n = (t, k) => t[k] ? `<span class="${t[k] < 0 ? "neg" : ""}">${cur(t[k], t.currency)}</span>` : "";
+      $("#stmt-totals").innerHTML = stmt.totals.filter(t => !acc || t.account === acc).map(t => `<tr><td>${esc(t.year)}</td><td>${esc(t.account)}</td>
+        <td class="num">${n(t, "dividend")}</td><td class="num">${n(t, "interest")}</td><td class="num">${n(t, "fee")}</td><td class="num">${n(t, "tax")}</td>
+        <td class="num">${n(t, "deposit")}</td><td class="num">${n(t, "withdrawal")}</td><td class="num">${n(t, "other")}</td></tr>`).join("") || empty(9, "No statement lines yet.");
+      const rows = stmt.rows.filter(r => (!cat || r.category === cat) && (!acc || r.account === acc)).slice(0, 500);
+      $("#stmt-rows").innerHTML = rows.map(r => { const [label, cls] = CAT[r.category] || [r.category, ""]; return `<tr><td>${esc(r.date)}</td><td><small>${esc(r.account)}</small></td>
+        <td>${badge(label, cls)}</td><td>${esc(r.comment || r.action)}${r.contract_code ? `<br><small class="muted">${esc(r.contract_code)}</small>` : ""}</td>
+        <td class="num ${r.amount < 0 ? "neg" : ""}">${cur(r.amount, r.currency)}</td></tr>`; }).join("") || empty(5, "Nothing here.");
+    }
+    $("#stmt-cat").addEventListener("change", renderStatement);
+    $("#stmt-acc").addEventListener("change", renderStatement);
+    async function loadStatement() {
+      stmt = await api.eeTransactions();
+      $("#stmt-wrap").hidden = !stmt.rows.length;
+      const accounts = [...new Set(stmt.rows.map(r => r.account))];
+      $("#stmt-acc").innerHTML = `<option value="">All accounts</option>` + accounts.map(a => `<option>${esc(a)}</option>`).join("");
+      renderStatement();
+    }
+
+    async function loadEEMails() {
+      const rows = await api.eeMails($("#ee-kind").value);
+      $("#ee-mails").innerHTML = rows.map(m => { const [label, cls] = KIND[m.kind] || [m.kind, ""]; return `<tr>
+        <td>${m.date || day(m.received_at)}</td>
+        <td>${badge(label + (m.side && m.kind !== "deposit" && m.kind !== "withdrawal" ? ` · ${m.side}` : ""), cls)}${m.txn_id ? "<br><small class='muted'>in your transactions</small>" : ""}${!m.parsed && m.kind !== "notice" ? "<br><small class='neg'>couldn't read</small>" : ""}</td>
+        <td>${esc(m.instrument || m.subject)}</td><td><small>${esc(m.account)}</small></td>
+        <td class="num">${units(m.quantity)}</td><td class="num">${cur(m.price, m.currency)}</td>
+        <td class="num">${cur(m.value, m.currency)}</td><td class="num">${cur(m.costs, m.currency)}</td>
+        <td><button class="secondary small ee-open" data-id="${m.id}">Read</button></td></tr>`; }).join("") || empty(9, "No EasyEquities emails yet. Connect Gmail on the EasyEquities page.");
+      bindMailButtons(loadEEMails);
+    }
+    $("#ee-kind").addEventListener("change", () => loadEEMails().catch(e => flash(e.message, "err")));
 
     // pages
     const LOAD = { markets: loadMarkets, overview: loadSummary, easyequities: loadEE, holdings: loadSummary, transactions: loadTxns,

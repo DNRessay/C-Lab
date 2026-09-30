@@ -91,9 +91,10 @@ def test_symbols_and_classes():
 
 # ── Platform ────────────────────────────────────────────────────────────────
 
-OVERVIEW = """<html><body>My Investments
+OVERVIEW = """<html><body>My Investments <a href="/Statements/Index">Statements</a>
 <div data-id="111" data-tradingcurrencyid="2"><span id="trust-account-types">EasyEquities ZAR</span></div>
 <div data-id="222" data-tradingcurrencyid="2"><span id="trust-account-types">EasyProperties ZAR</span></div>
+<div data-id="999" data-tradingcurrencyid="2"><span id="trust-account-types">Demo ZAR</span></div>
 </body></html>"""
 
 
@@ -143,12 +144,23 @@ class FakeSession:
         if "Valuations" in url:
             return FakeResponse(200, data='{"TopSummary": {"AccountValue": "R1 100.00"}}')
         if "GetTransactions" in url:
-            return FakeResponse(200, data=[{"TransactionId": 1, "Action": "Buy"}])
+            if self.account != "111":
+                return FakeResponse(200, data=[])
+            return FakeResponse(200, data=[
+                {"TransactionId": 1, "Action": "Buy", "Comment": "Bought Adcock", "DebitCredit": -50.3,
+                 "TransactionDate": "/Date(1747033805000)/"},
+                {"TransactionId": 2, "Action": "Deposit", "Comment": "EFT Deposit", "DebitCredit": 1676.0,
+                 "TransactionDate": "2025-05-09T15:35:30"},
+                {"TransactionId": 3, "Action": "Dividend", "Comment": "Adcock Ingram dividend", "DebitCredit": 2.5,
+                 "TransactionDate": "2025-06-02T00:00:00"},
+                {"TransactionId": 4, "Action": "", "Comment": "Monthly custody fee", "DebitCredit": -1.15,
+                 "TransactionDate": "2025-06-30T00:00:00"},
+            ])
         return FakeResponse(404)
 
 
 def test_platform_parsers():
-    assert [a["name"] for a in platform.parse_accounts(OVERVIEW)] == ["EasyEquities ZAR", "EasyProperties ZAR"]
+    assert [a["name"] for a in platform.parse_accounts(OVERVIEW)] == ["EasyEquities ZAR", "EasyProperties ZAR", "Demo ZAR"]
     rows = platform.parse_holdings(HOLDINGS["111"])
     assert rows[0]["contract_code"] == "EQU.ZA.AIP" and rows[0]["current_value"] == 1050.0
     assert platform.parse_shares("<div>#Shares</div><div>12</div><div>#FSR</div><div>.5</div>") == 12.5
@@ -157,7 +169,8 @@ def test_platform_parsers():
 
 def test_snapshot_and_login_failure():
     snap = platform.snapshot("u", "p", client=platform.Platform(session=FakeSession()))
-    eq, prop = snap["accounts"]
+    eq, prop = snap["accounts"]  # the demo account is skipped
+    assert snap["statement_links"] == ["/Statements/Index"]
     assert eq["value"] == 1100.0 and eq["holdings"][0]["shares"] == 1.0068
     assert prop["holdings"][0]["name"] == "The Edge" and prop["value"] == 1100.0
     with pytest.raises(platform.PlatformError) as e:
@@ -166,6 +179,13 @@ def test_snapshot_and_login_failure():
     with pytest.raises(platform.PlatformError) as e:
         platform.snapshot("u", "p", client=platform.Platform(session=FakeSession(overview="<html>new layout</html>")))
     assert e.value.stage == "accounts" and "new layout" in e.value.page
+
+
+def test_account_switch_that_does_not_stick_is_not_copied(monkeypatch):
+    monkeypatch.setitem(HOLDINGS, "222", HOLDINGS["111"])
+    snap = platform.snapshot("u", "p", client=platform.Platform(session=FakeSession()))
+    prop = snap["accounts"][1]
+    assert prop["holdings"] == [] and "previous account" in prop["warnings"][0]
 
 
 # ── End to end through the API ──────────────────────────────────────────────
@@ -218,9 +238,23 @@ def test_connect_sync_and_portfolio(market):
     db.close()
 
     s = api.get("/api/invest/summary", headers=h).json()
+    assert [x["symbol"] for x in s["holdings"]].count("AIP.JO") == 1  # not counted twice
     aip = next(x for x in s["holdings"] if x["symbol"] == "AIP.JO")
-    assert aip["price"] == 52.0 and aip["price_source"].startswith("EasyEquities")
+    assert aip["price"] == 52.0 and aip["price_source"].startswith("EasyEquities") and aip["account"] == "EasyEquities ZAR"
+    assert aip["value"] == 1050.0 and aip["quantity"] == 1.0068
     assert s["easyequities"]["value"] == 2200.0
+    assert s["cash"] == 2200.0 - 1050.0 - 95.0  # wallet cash = account value - holdings
+    assert s["value"] == pytest.approx(2200.0 + 87.2068 * 1.0)  # + The Edge from email (no platform price match)
+    assert s["invested"] == 1676.0  # the email deposit (Gmail history wins over the statement when both exist)
+
+    assert s["income"] == {"dividend": 2.5, "interest": 0.0, "fee": 1.15, "tax": 0.0}
+
+    t = api.get("/api/ee/transactions", headers=h).json()
+    assert [r["category"] for r in t["rows"]] == ["fee", "dividend", "trade", "deposit"]  # newest first
+    row = t["rows"][2]
+    assert (row["action"], row["date"], row["amount"]) == ("Buy", "2025-05-12", -50.3)
+    assert {"account": "EasyEquities ZAR", "year": "2025", "currency": "ZAR", "trade": -50.3, "deposit": 1676.0,
+            "dividend": 2.5, "fee": -1.15} in t["totals"]
 
     # A second sync adds nothing twice; re-reading emails is idempotent too.
     api.post("/api/ee/sync", headers=h)
@@ -232,6 +266,21 @@ def test_connect_sync_and_portfolio(market):
     assert "Sirius" in api.get(f"/api/ee/mails/{ca['id']}", headers=h).json()["body"]
 
 
+@pytest.mark.parametrize("action,comment,cat", [
+    ("Dividend", "Sirius Real Estate - Dividend", "dividend"),
+    ("", "Dividend Withholding Tax @ 20%", "tax"),
+    ("Custody Fee", "Monthly custody fee", "fee"),
+    ("", "VAT on custody fee", "fee"),
+    ("Deposit", "EFT deposit", "deposit"),
+    ("Withdrawal", "Withdrawal to bank", "withdrawal"),
+    ("", "Interest on cash", "interest"),
+    ("Buy", "Bought Capitec", "trade"),
+    ("", "Something new", "other"),
+])
+def test_statement_categories(action, comment, cat):
+    assert sync.categorise(action, comment) == cat
+
+
 def test_failed_sync_keeps_last_snapshot(market, monkeypatch):
     h = register("eeuser")
     api.put("/api/ee/platform", headers=h, json={"username": "me", "password": "secret"})
@@ -240,6 +289,16 @@ def test_failed_sync_keeps_last_snapshot(market, monkeypatch):
     body = api.post("/api/ee/sync", headers=h).json()
     assert body["platform"]["status"] == "error" and body["platform"]["error_stage"] == "login"
     assert len(body["accounts"]) == 2  # still showing the last good read
+
+
+def test_statement_builds_history_without_gmail(market):
+    h = register("nosy")
+    api.put("/api/ee/platform", headers=h, json={"username": "me", "password": "secret"})
+    s = api.get("/api/invest/summary", headers=h).json()
+    assert s["invested"] == 1676.0 and s["since"] == "2025-05-09"  # money in, from the statement's deposit
+    assert s["gain"] == pytest.approx(s["value"] - 1676.0)
+    assert {b["symbol"] for b in s["benchmarks"]} == {"STX40.JO", "STXPRO.JO", "ZAR=X"}
+    api.delete("/api/ee/platform", headers=h)
 
 
 def test_other_users_cannot_see_mail(market):

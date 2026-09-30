@@ -114,6 +114,7 @@ export const api = {
   eeDisconnectMail: () => del("/api/ee/mail"),
   eeSync: () => post("/api/ee/sync"),
   eeReparse: () => post("/api/ee/reparse"),
+  eeTransactions: () => get("/api/ee/transactions"),
   eeMails: (kind = "") => get(`/api/ee/mails${qs({ kind })}`),
   eeMail: (id) => get(`/api/ee/mails/${id}`),
   eeUpdateMail: (id, b) => patch(`/api/ee/mails/${id}`, b),

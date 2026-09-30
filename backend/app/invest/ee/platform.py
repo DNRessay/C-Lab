@@ -104,11 +104,19 @@ def parse_shares(page):
     return w + (float(f if f.startswith(".") else "0." + f) if f else 0.0)
 
 
+def statement_links(page):
+    """Paths on the overview page that look like statements/reports (to learn where printable statements live)."""
+    found = set(re.findall(r"""(?:href|action|data-[\w-]*url)=["']([^"']*(?:[Ss]tatement|[Rr]eport|[Tt]ax[Cc]ert)[^"']*)["']""", page))
+    found |= set(re.findall(r"""["'](/[\w/-]*(?:Statement|Report|TaxCertificate)[\w/-]*)["']""", page))
+    return sorted(p for p in found if len(p) < 200)[:20]
+
+
 class Platform:
     def __init__(self, base_url=BASE_URL, session=None):
         self.base_url = base_url
         self.s = session or http.Session(**SESSION_KW)
         self.current = None
+        self.statement_links = []
 
     def _url(self, path):
         return self.base_url + path
@@ -140,6 +148,7 @@ class Platform:
 
     def accounts(self):
         r = self._get("accounts", OVERVIEW)
+        self.statement_links = statement_links(r.text)
         accounts = parse_accounts(r.text)
         if not accounts:
             raise PlatformError("accounts", "no accounts found on the overview page (layout changed?)", r.text)
@@ -191,6 +200,10 @@ class Platform:
             raise PlatformError("transactions", "response is not JSON", r.text)
 
 
+def is_demo(name):
+    return "demo" in (name or "").lower()
+
+
 def valuation_total(valuation):
     """Best effort 'account value' from the valuations JSON."""
     if not isinstance(valuation, dict):
@@ -212,10 +225,18 @@ def snapshot(username, password, base_url=BASE_URL, client=None):
     """Log in and read every account. Raises PlatformError; returns a JSON-safe dict."""
     p = client or Platform(base_url)
     p.login(username, password)
-    out = []
+    out, previous = [], None
     for acc in p.accounts():
+        if is_demo(acc["name"]):
+            continue  # EasyEquities' practice accounts aren't real money
         item = {**acc, "holdings": [], "valuation": None, "transactions": [], "warnings": []}
         item["holdings"] = p.holdings(acc["id"])
+        names = sorted(h["name"] for h in item["holdings"])
+        if names and names == previous:
+            # EasyEquities kept showing the previous account (seen with EasyProperties); don't copy its holdings.
+            item["holdings"] = []
+            item["warnings"].append("holdings: EasyEquities showed the previous account's holdings instead of this one's")
+        previous = names or previous
         for stage, fn in (("valuation", p.valuations), ("transactions", p.transactions)):
             try:
                 item[stage] = fn(acc["id"])
@@ -226,4 +247,4 @@ def snapshot(username, password, base_url=BASE_URL, client=None):
         item["holdings_value"] = holdings_value
         item["purchase_value"] = sum(h["purchase_value"] or 0 for h in item["holdings"])
         out.append(item)
-    return {"accounts": out}
+    return {"accounts": out, "statement_links": p.statement_links}

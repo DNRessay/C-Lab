@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from . import prices
 from .ee.models import EEConnection
-from .ee.sync import platform_view
+from .ee.sync import platform_transactions, platform_view, rand_rate
 from .models import InvestTxn, ManualPrice, PropertyAsset
 
 ZERO = Decimal(0)
@@ -90,8 +90,28 @@ def summary(db: Session, user_id: int):
     conn = db.scalar(select(EEConnection).where(EEConnection.user_id == user_id))
     ee_view, ee_prices = platform_view(db, conn) if conn and conn.snapshot else (None, {})
 
+    # EasyEquities' own holdings are the truth for whatever is in those accounts; transactions fill in the rest.
+    ee_rows = [h for a in (ee_view or {}).get("accounts", []) for h in a["holdings"]]
+    ee_symbols = {h["symbol"] for h in ee_rows}
+    taken = (ee_view or {}).get("taken_at") or ""
+
     rows, total_value, total_cost = [], 0.0, 0.0
-    for symbol, p in holdings(txns).items():
+    txn_pos = holdings(txns)
+    for h in ee_rows:
+        extra = txn_pos.get(h["symbol"], {})
+        qty = h.get("shares")
+        rows.append({
+            "symbol": h["symbol"], "name": h["name"], "asset_class": h["asset_class"], "account": h["account"],
+            "quantity": qty, "avg_cost": h["cost_zar"] / qty if qty else None, "cost": h["cost_zar"],
+            "price": h["price_zar"], "price_source": f"EasyEquities ({taken[:10]})", "value": h["value_zar"],
+            "gain": h["gain_zar"], "gain_pct": (h["value_zar"] / h["cost_zar"] - 1) if h["cost_zar"] else None,
+            "realised": float(extra.get("realised", 0)), "dividends": float(extra.get("dividends", 0)),
+        })
+        total_value += h["value_zar"]
+        total_cost += h["cost_zar"]
+    for symbol, p in txn_pos.items():
+        if symbol in ee_symbols:
+            continue
         if p["quantity"] <= Decimal("0.000001") and not p["realised"] and not p["dividends"]:
             continue
         source, price = "none", None
@@ -111,20 +131,37 @@ def summary(db: Session, user_id: int):
         total_value += value
         total_cost += cost
         rows.append({
-            "symbol": symbol, "name": p["name"], "asset_class": p["asset_class"], "quantity": qty,
+            "symbol": symbol, "name": p["name"], "asset_class": p["asset_class"], "account": "", "quantity": qty,
             "avg_cost": cost / qty if qty else None, "cost": cost, "price": price, "price_source": source,
             "value": value, "gain": value - cost if qty else 0.0, "gain_pct": (value / cost - 1) if cost else None,
             "realised": float(p["realised"]), "dividends": float(p["dividends"]),
         })
     rows.sort(key=lambda r: -r["value"])
 
-    cash = cash_balance(txns)
     flows = contributions(txns)
+    has_deposits = any(t.kind == "deposit" for t in txns)
+    statement = platform_transactions(conn) if ee_view else []
+    income = statement_income(db, statement)
+    if not has_deposits:
+        # EasyEquities' statement has every deposit and withdrawal: use it as the money-in history.
+        stmt_flows = statement_flows(statement)
+        if stmt_flows:
+            flows, has_deposits = stmt_flows, True
+    if ee_view:
+        # Cash sitting in EasyEquities wallets, straight from EasyEquities.
+        cash = Decimal(str(round(sum(a["cash_zar"] for a in ee_view["accounts"]), 2)))
+    else:
+        cash = cash_balance(txns)
     invested = float(sum((a for _, a in flows), ZERO))
     portfolio_value = total_value + (float(cash) if cash is not None else 0.0)
-    # Without a cash record, sells already reduce `invested`; only dividends left the portfolio as cash.
-    received = sum(r["dividends"] for r in rows) if cash is None else 0.0
-    put_in = float(sum((a for _, a in flows if a > 0), ZERO))
+    if ee_view and not has_deposits:
+        # No deposit history (Gmail not connected): measure against what the holdings cost, cash counts as put in.
+        invested = total_cost + float(cash or 0)
+        received = 0.0
+    else:
+        # Without a cash record, sells already reduce `invested`; only dividends left the portfolio as cash.
+        received = sum(r["dividends"] for r in rows) if cash is None else 0.0
+    put_in = float(sum((a for _, a in flows if a > 0), ZERO)) if has_deposits or not ee_view else invested
     benchmarks = []
     for symbol, label in prices.BENCHMARKS:
         v = what_if(db, flows, symbol)
@@ -147,16 +184,48 @@ def summary(db: Session, user_id: int):
         "value": portfolio_value,
         "gain": portfolio_value + received - invested,
         "return_pct": (portfolio_value + received - invested) / put_in if put_in > 0 else None,
-        "since": txns[0].date.isoformat() if txns else None,
+        "since": min([t.date for t in txns] + [d for d, _ in flows]).isoformat() if txns or flows else None,
+        "income": income,
         "benchmarks": benchmarks,
         "allocation": {k: v for k, v in sorted(allocation.items(), key=lambda kv: -kv[1]) if v},
         "properties": props,
         "property_equity": sum(p["equity"] for p in props),
         "net_worth": portfolio_value + sum(p["equity"] for p in props),
         "easyequities": {"value": ee_view["value_zar"], "taken_at": ee_view["taken_at"],
-                         "accounts": [{"name": a["name"], "value_zar": a["value_zar"]} for a in ee_view["accounts"]]}
+                         "accounts": [{k: a[k] for k in ("name", "currency", "value", "value_zar", "cash_zar", "cost_zar",
+                                                         "warnings")} | {"holdings": len(a["holdings"])}
+                                      for a in ee_view["accounts"]]}
         if ee_view else None,
     }
+
+
+def _day(v):
+    try:
+        return date.fromisoformat(str(v)[:10])
+    except ValueError:
+        return None
+
+
+def statement_flows(statement):
+    """Dated money in (+) / out (-) from EasyEquities statement lines. Foreign wallets are funded from the rand one."""
+    out = []
+    for r in statement:
+        d = _day(r["date"])
+        if r["category"] not in ("deposit", "withdrawal") or r["amount"] is None or not d or r["currency"] != "ZAR":
+            continue
+        amt = abs(Decimal(str(r["amount"])))
+        out.append((d, amt if r["category"] == "deposit" else -amt))
+    return sorted(out)
+
+
+def statement_income(db: Session, statement):
+    """All-time dividends, interest, fees and tax from the statement, in rand (fees/tax as amounts paid)."""
+    totals = defaultdict(float)
+    for r in statement:
+        if r["category"] in ("dividend", "interest", "fee", "tax") and r["amount"] is not None:
+            rate = rand_rate(db, r["currency"]) or 0.0
+            totals[r["category"]] += abs(r["amount"]) * rate
+    return {k: round(totals[k], 2) for k in ("dividend", "interest", "fee", "tax")} if statement else None
 
 
 def property_view(p: PropertyAsset):

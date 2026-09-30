@@ -15,7 +15,7 @@ from .models import EEConnection, EEMail
 log = logging.getLogger(__name__)
 
 TXN_KINDS = ("trade", "deposit", "withdrawal")
-KEEP_PLATFORM_TXNS = 200
+KEEP_PLATFORM_TXNS = 3000  # the account statement: dividends, fees, interest, trades, deposits
 
 
 def symbol_for(code: str, name: str = "", account: str = "") -> str:
@@ -77,15 +77,18 @@ def sync_platform(db: Session, conn: EEConnection, client=None):
         conn.platform_synced_at = utcnow()
         log.info("EasyEquities sync ok for user %s: %s", conn.user_id,
                  [(a.get("name"), len(a.get("holdings", [])), a.get("warnings", [])) for a in snap["accounts"]])
+        log.info("EasyEquities statement links: %s", snap.get("statement_links"))
     db.commit()
     return conn.platform_status == "ok"
 
 
 def platform_view(db: Session, conn: EEConnection):
-    """Last good snapshot in rand, plus per-symbol prices the portfolio can use."""
+    """Last good snapshot in rand (demo accounts left out), plus per-symbol prices the portfolio can use."""
     snap = (conn.snapshot or {}) if conn else {}
     accounts, symbol_prices, total = [], {}, 0.0
     for acc in snap.get("accounts", []):
+        if platform.is_demo(acc.get("name")):
+            continue
         cur = mail.account_currency(acc.get("name", ""))
         rate = rand_rate(db, cur) or 0.0
         rows = []
@@ -95,13 +98,79 @@ def platform_view(db: Session, conn: EEConnection):
             cost = (h.get("purchase_value") or 0) * rate
             if h.get("current_price") is not None:
                 symbol_prices[sym] = h["current_price"] * rate
-            rows.append({**h, "symbol": sym, "value_zar": value, "cost_zar": cost, "gain_zar": value - cost})
+            rows.append({**h, "symbol": sym, "account": acc.get("name"), "currency": cur,
+                         "asset_class": asset_class_for(acc.get("name", ""), h.get("name", "")),
+                         "price_zar": (h["current_price"] * rate) if h.get("current_price") is not None else None,
+                         "value_zar": value, "cost_zar": cost, "gain_zar": value - cost})
         value = (acc.get("value") or 0) * rate
+        holdings_value = sum(r["value_zar"] for r in rows)
         total += value
         accounts.append({"id": acc.get("id"), "name": acc.get("name"), "currency": cur, "rate": rate,
                          "value": acc.get("value"), "value_zar": value, "holdings": rows,
+                         "cash_zar": max(value - holdings_value, 0.0),
                          "cost_zar": sum(r["cost_zar"] for r in rows), "warnings": acc.get("warnings", [])})
     return {"accounts": accounts, "value_zar": total, "taken_at": snap.get("taken_at")}, symbol_prices
+
+
+def _field(t, *keys):
+    for k in keys:
+        if t.get(k) not in (None, ""):
+            return t[k]
+    return None
+
+
+# First match wins, so "dividend withholding tax" is tax and "broker commission" is a fee.
+CATEGORIES = [
+    ("tax", r"withholding|dividend tax|\bdwt\b|\bwht\b|securities transfer tax|\bstt\b"),
+    ("dividend", r"dividend|distribution|\bdiv\b|drip"),
+    ("interest", r"interest"),
+    ("fee", r"fee|custody|admin|charge|commission|vat|levy|subscription|thrive|cost"),
+    ("deposit", r"deposit|\beft\b|card funding|funded|top.?up"),
+    ("withdrawal", r"withdraw"),
+    ("transfer", r"transfer|conversion|exchange|fx|forex"),
+    ("trade", r"\bbuy\b|\bsell\b|bought|sold|purchase|trade|allocation|redemption"),
+]
+
+
+def categorise(action: str, comment: str) -> str:
+    text = f"{action} {comment}".lower()
+    for name, pattern in CATEGORIES:
+        if re.search(pattern, text):
+            return name
+    return "other"
+
+
+def statement_totals(rows):
+    """Money per category, per account and year. Fees/tax are shown as positive amounts paid."""
+    out = {}
+    for r in rows:
+        if r["amount"] is None:
+            continue
+        key = (r["account"], (r["date"] or "")[:4])
+        t = out.setdefault(key, {"account": r["account"], "year": key[1], "currency": r["currency"]})
+        t[r["category"]] = round(t.get(r["category"], 0.0) + r["amount"], 2)
+    return sorted(out.values(), key=lambda t: (t["year"], t["account"] or ""), reverse=True)
+
+
+def platform_transactions(conn: EEConnection):
+    """EasyEquities' own transaction history from the last snapshot, newest first."""
+    out = []
+    for acc in ((conn.snapshot or {}) if conn else {}).get("accounts", []):
+        if platform.is_demo(acc.get("name")) or not isinstance(acc.get("transactions"), list):
+            continue
+        for t in acc["transactions"]:
+            if not isinstance(t, dict):
+                continue
+            raw_date = str(_field(t, "TransactionDate", "Date", "CreatedDate") or "")
+            m = re.search(r"/Date\((\d+)", raw_date)  # .NET style /Date(1757315681000)/
+            day = date.fromtimestamp(int(m.group(1)) / 1000).isoformat() if m else raw_date[:10]
+            out.append({"account": acc.get("name"), "currency": mail.account_currency(acc.get("name", "")),
+                        "date": day, "action": _field(t, "Action", "TransactionType") or "",
+                        "comment": _field(t, "Comment", "Description") or "",
+                        "amount": platform.money(_field(t, "DebitCredit", "Amount")),
+                        "contract_code": _field(t, "ContractCode") or "", "id": _field(t, "TransactionId", "LogId")})
+            out[-1]["category"] = categorise(out[-1]["action"], out[-1]["comment"])
+    return sorted(out, key=lambda r: r["date"] or "", reverse=True)
 
 
 # ── Email ───────────────────────────────────────────────────────────────────
