@@ -75,6 +75,8 @@ def sync_platform(db: Session, conn: EEConnection, client=None):
         conn.snapshot = snap
         conn.platform_status, conn.platform_error, conn.platform_error_stage, conn.platform_debug = "ok", "", "", ""
         conn.platform_synced_at = utcnow()
+        log.info("EasyEquities sync ok for user %s: %s", conn.user_id,
+                 [(a.get("name"), len(a.get("holdings", [])), a.get("warnings", [])) for a in snap["accounts"]])
     db.commit()
     return conn.platform_status == "ok"
 
@@ -177,6 +179,7 @@ def sync_mail(db: Session, conn: EEConnection, fetcher=None):
         added += 1
     conn.mail_last_uid, conn.mail_uidvalidity = last_uid, validity
     conn.mail_status, conn.mail_error, conn.mail_synced_at = "ok", "", utcnow()
+    log.info("Mail sync ok for user %s: %d fetched, %d new", conn.user_id, len(messages), added)
     db.commit()
     return added
 
