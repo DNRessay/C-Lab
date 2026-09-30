@@ -114,7 +114,19 @@ def stats(row: PriceCache):
         "high_52w": max(year) if year else None, "low_52w": min(year) if year else None,
         "dividend_yield": float(row.dividends_12m) / price if price and row.dividends_12m else None,
         "as_of": row.fetched_at, "error": row.error or None,
+        "spark": spark(row.history),
     }
+
+
+def spark(history, days=365, points=52):
+    """About weekly closes over the last year, for a sparkline."""
+    cutoff = (date.today() - timedelta(days=days)).isoformat()
+    closes = [h[1] for h in history or [] if h[0] >= cutoff]
+    if len(closes) <= points:
+        return [round(c, 4) for c in closes]
+    step = len(closes) / points
+    picked = [closes[int(i * step)] for i in range(points)]
+    return [round(c, 4) for c in picked[:-1] + [closes[-1]]]
 
 
 def _prev_change(row):

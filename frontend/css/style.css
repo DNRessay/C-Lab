@@ -21,6 +21,9 @@
   /* chart series (validated for the dark surface): worth, money put in */
   --series-1: #15803d;
   --series-2: #3b82f6;
+  /* up / down (gain vs loss, money in vs out): validated pair, plus position above/below zero */
+  --pos: #15803d;
+  --neg: #dc2626;
   color-scheme: dark;
 }
 
@@ -253,3 +256,9 @@ button.gsi {
 button.gsi svg { width: 1.15rem; height: 1.15rem; }
 button.gsi:hover:not(:disabled) { background: #f2f2f2; border-color: #747775; }
 button.gsi:disabled { opacity: 0.5; }
+
+.spark { display: block; width: 110px; height: 30px; }
+.chart-grid { display: grid; gap: 0 1rem; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.chart-grid h2 { margin-top: 0.5rem; }
+.wrap-first td:first-child { white-space: normal; min-width: 7rem; }
+@media (max-width: 600px) { .spark { width: 72px; height: 26px; } }

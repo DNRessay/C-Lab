@@ -116,6 +116,11 @@ def summary(user: User = Depends(current_user), db: Session = Depends(get_db)):
     return portfolio.summary(db, user.id)
 
 
+@router.get("/charts")
+def charts(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    return portfolio.monthly(db, user.id)
+
+
 @router.get("/quote/{symbol}")
 def quote(symbol: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
     row = prices.quote(db, symbol)

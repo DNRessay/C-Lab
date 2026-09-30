@@ -22,8 +22,8 @@
     <!-- Markets -->
     <section id="markets">
       <div class="card table-wrap"><table>
-        <thead><tr><th>Market</th><th class="num">Now</th><th class="num">Day</th><th class="num">Month</th><th class="num">Year</th><th class="num">52w range</th></tr></thead>
-        <tbody id="market-rows"></tbody>
+        <thead><tr><th>Market</th><th class="num">Now</th><th>Last year</th><th class="num">Day</th><th class="num">Month</th><th class="num">Year</th><th class="num">52w range</th></tr></thead>
+        <tbody id="market-rows" class="wrap-first"></tbody>
       </table></div>
       <p class="muted">Rand pairs show rand per 1 unit of the foreign currency, so a rising number means a weaker rand.</p>
     </section>
@@ -37,6 +37,23 @@
         <div class="chart-box"><canvas id="worth-chart" aria-label="Portfolio worth and money put in over time" role="img"></canvas></div>
         <p class="muted" id="worth-note" style="margin:0.5rem 0 0"></p>
       </div>
+      <div class="chart-grid">
+        <div>
+          <h2>Money in and out</h2>
+          <div class="card">
+            <div class="legend"><span><i style="background:var(--pos)"></i>Deposits</span><span><i style="background:var(--neg)"></i>Withdrawals</span></div>
+            <div class="chart-box short"><canvas id="flow-chart" role="img" aria-label="Deposits and withdrawals per month"></canvas></div>
+          </div>
+        </div>
+        <div>
+          <h2>Income and costs</h2>
+          <div class="card">
+            <div class="legend"><span><i style="background:var(--pos)"></i>Dividends + interest</span><span><i style="background:var(--neg)"></i>Fees + tax</span></div>
+            <div class="chart-box short"><canvas id="income-chart" role="img" aria-label="Dividends and interest against fees and tax per month"></canvas></div>
+          </div>
+        </div>
+      </div>
+      <p class="muted" id="monthly-note"></p>
       <div id="ee-overview" hidden>
         <h2>EasyEquities accounts</h2>
         <div class="card"><div class="chart-box short"><canvas id="account-chart" aria-label="Value per EasyEquities account" role="img"></canvas></div></div>
@@ -87,6 +104,19 @@
 
     <!-- Holdings -->
     <section id="holdings" hidden>
+      <div class="chart-grid" id="holding-charts" hidden>
+        <div>
+          <h2 style="margin-top:0">Biggest holdings</h2>
+          <div class="card"><div class="chart-box" id="top-box"><canvas id="top-chart" role="img" aria-label="Holdings by value"></canvas></div></div>
+        </div>
+        <div>
+          <h2 style="margin-top:0">Gain or loss</h2>
+          <div class="card">
+            <div class="legend"><span><i style="background:var(--pos)"></i>Up</span><span><i style="background:var(--neg)"></i>Down</span></div>
+            <div class="chart-box" id="gain-box"><canvas id="gain-chart" role="img" aria-label="Gain or loss per holding"></canvas></div>
+          </div>
+        </div>
+      </div>
       <div class="card table-wrap"><table>
         <thead><tr><th>Holding</th><th class="num">Units</th><th class="num">Avg cost</th><th class="num">Price</th><th class="num">Value</th><th class="num">Gain</th><th class="num">Dividends</th><th></th></tr></thead>
         <tbody id="holding-rows"></tbody>
@@ -96,7 +126,14 @@
 
     <!-- Transactions -->
     <section id="transactions" hidden>
-      <h2 style="margin-top:0">Your transactions</h2>
+      <div id="trade-wrap" hidden>
+        <h2 style="margin-top:0">Buys and sells</h2>
+        <div class="card">
+          <div class="legend"><span><i style="background:var(--series-1)"></i>Bought</span><span><i style="background:var(--series-2)"></i>Sold</span></div>
+          <div class="chart-box short"><canvas id="trade-chart" role="img" aria-label="Money spent buying and received selling per month"></canvas></div>
+        </div>
+      </div>
+      <h2>Your transactions</h2>
       <div class="card table-wrap"><table>
         <thead><tr><th>Date</th><th>Type</th><th>Holding</th><th class="num">Units</th><th class="num">Price</th><th class="num">Amount</th><th></th></tr></thead>
         <tbody id="txn-rows"></tbody>
@@ -187,7 +224,7 @@
         <p class="muted" style="margin:0.5rem 0 0">JSE symbols end in <code>.JO</code>. Property shares to try: GRT.JO (Growthpoint), RDF.JO (Redefine), FFB.JO (Fortress), VKE.JO (Vukile), STXPRO.JO (Satrix Property ETF). Alerts are checked nightly and emailed to you.</p>
       </div>
       <div class="card table-wrap"><table>
-        <thead><tr><th>Symbol</th><th class="num">Price</th><th class="num">Day</th><th class="num">Month</th><th class="num">Year</th><th class="num">Div. yield</th><th class="num">52w range</th><th>Alerts</th><th></th></tr></thead>
+        <thead><tr><th>Symbol</th><th class="num">Price</th><th>Last year</th><th class="num">Day</th><th class="num">Month</th><th class="num">Year</th><th class="num">Div. yield</th><th class="num">52w range</th><th>Alerts</th><th></th></tr></thead>
         <tbody id="watch-rows"></tbody>
       </table></div>
     </section>
@@ -196,6 +233,17 @@
     <section id="property" hidden>
       <div id="ep-wrap" hidden>
         <h2 style="margin-top:0">EasyProperties</h2>
+        <div class="chart-grid">
+          <div class="card">
+            <h3>Bought for vs worth now</h3>
+            <div class="legend"><span><i style="background:var(--series-2)"></i>Bought for</span><span><i style="background:var(--series-1)"></i>Worth now</span></div>
+            <div class="chart-box" id="ep-value-box"><canvas id="ep-value-chart" role="img" aria-label="What each property cost and is worth now"></canvas></div>
+          </div>
+          <div class="card">
+            <h3>Rental yield</h3>
+            <div class="chart-box" id="ep-yield-box"><canvas id="ep-yield-chart" role="img" aria-label="Rental yield per property"></canvas></div>
+          </div>
+        </div>
         <div class="card table-wrap"><table>
           <thead><tr><th>Property</th><th class="num">Value</th><th class="num">Bought for</th><th class="num">Gain</th><th class="num">Rental yield</th><th class="num">Rent received</th></tr></thead>
           <tbody id="ep-rows"></tbody>
@@ -261,6 +309,8 @@
       const s = await api.investSummary();
       renderEEOverview(s);
       renderCharts(s);
+      renderHoldingCharts(s);
+      api.investCharts().then(renderMonthly).catch(e => flash(e.message, "err"));
       loadDecisions().catch(e => flash(e.message, "err"));
       const kpi = (label, value, sub = "") => `<div class="card stat"><div class="value">${value}</div><div class="label">${label}${sub ? `<br>${sub}` : ""}</div></div>`;
       $("#kpis").innerHTML =
@@ -318,6 +368,7 @@
     async function loadTxns() {
       loadStatement().catch(e => flash(e.message, "err"));
       loadEEMails().catch(e => flash(e.message, "err"));
+      api.investCharts().then(renderTradeChart).catch(e => flash(e.message, "err"));
       const rows = await api.investTxns();
       $("#txn-rows").innerHTML = rows.map(t => `<tr><td>${t.date}</td><td>${TYPE[t.kind] || esc(t.kind)}</td>
         <td>${esc(t.symbol)}${t.name ? `<br><small class="muted">${esc(t.name)}</small>` : ""}</td>
@@ -352,11 +403,12 @@
       $("#watch-rows").innerHTML = rows.map(w => `<tr>
         <td><strong>${esc(w.symbol)}</strong><br><small class="muted">${esc(w.name)}</small></td>
         <td class="num">${w.price != null ? money(w.price) : badge("no price", "warn")}</td>
+        <td>${sparkline(w.spark, w.change_1y)}</td>
         ${pctCell(w.change_1d)}${pctCell(w.change_1m)}${pctCell(w.change_1y)}
         <td class="num">${w.dividend_yield != null ? (w.dividend_yield * 100).toFixed(1) + "%" : "—"}</td>
         <td class="num"><small>${w.low_52w != null ? `${money(w.low_52w)} – ${money(w.high_52w)}` : ""}</small></td>
         <td><small>${w.alert_below != null ? `below ${money(w.alert_below)}<br>` : ""}${w.alert_above != null ? `above ${money(w.alert_above)}` : ""}</small></td>
-        <td class="row"><button class="secondary small alerts" data-id="${w.id}">Alerts</button><button class="secondary small del" data-id="${w.id}">Remove</button></td></tr>`).join("") || empty(9, "Nothing on your watchlist yet.");
+        <td class="row"><button class="secondary small alerts" data-id="${w.id}">Alerts</button><button class="secondary small del" data-id="${w.id}">Remove</button></td></tr>`).join("") || empty(10, "Nothing on your watchlist yet.");
       $$("#watch-rows .del").forEach(b => b.addEventListener("click", async () => {
         try { await api.deleteWatch(b.dataset.id); loadWatch(); } catch (e) { flash(e.message, "err"); }
       }));
@@ -383,6 +435,7 @@
       api.investSummary().then(s => {
         const ep = s.holdings.filter(h => h.asset_class === "easyproperties");
         $("#ep-wrap").hidden = !ep.length;
+        renderPropertyCharts(ep);
         $("#ep-rows").innerHTML = ep.map(h => `<tr><td><strong>${esc(h.name)}</strong><br><small class="muted">${esc(h.account || h.symbol)}</small></td>
           <td class="num">${money(h.value)}</td><td class="num">${money(h.cost)}</td>
           <td class="num">${signed(h.gain)}<br><small>${pct(h.gain_pct)}</small></td>
@@ -429,6 +482,7 @@
       $("#market-rows").innerHTML = markets.map(m => `<tr>
         <td><strong>${esc(m.label)}</strong><br><small class="muted">${esc(m.symbol)}</small></td>
         <td class="num">${m.price != null ? fmt(m, m.price) : badge("no data", "warn")}</td>
+        <td>${sparkline(m.spark, m.change_1y)}</td>
         ${pctCell(m.change_1d)}${pctCell(m.change_1m)}${pctCell(m.change_1y)}
         <td class="num"><small>${m.low_52w != null ? `${fmt(m, m.low_52w)} – ${fmt(m, m.high_52w)}` : ""}</small></td></tr>`).join("");
     }
@@ -550,6 +604,112 @@
           borderRadius: 4, borderSkipped: "start", maxBarThickness: 22 }] },
         options: { indexAxis: "y", maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip },
           scales: { x: { ticks: { callback: randTick, maxTicksLimit: 5 } }, y: { grid: { display: false } } } },
+      });
+    }
+
+    // Sparkline: one thin line, last point marked; no axes (the table has the numbers).
+    function sparkline(values, change) {
+      if (!values || values.length < 2) return "";
+      const w = 110, h = 30, pad = 3, lo = Math.min(...values), hi = Math.max(...values), span = hi - lo || 1;
+      const pts = values.map((v, i) => [pad + i * (w - 2 * pad) / (values.length - 1), h - pad - (v - lo) / span * (h - 2 * pad)]);
+      const colour = change == null ? css("--muted") : change < 0 ? css("--neg") : css("--pos");
+      const [lx, ly] = pts[pts.length - 1];
+      return `<svg class="spark" viewBox="0 0 ${w} ${h}" role="img" aria-label="Price over the last year${change != null ? `, ${pct(change)}` : ""}">
+        <polyline fill="none" stroke="${colour}" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round" points="${pts.map(p => p.map(n => n.toFixed(1)).join(",")).join(" ")}"/>
+        <circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="2.5" fill="${colour}"/></svg>`;
+    }
+    const monthLabel = (m) => new Date(m + "-01").toLocaleDateString("en-ZA", { month: "short", year: "2-digit" });
+    const sizeBox = (id, rows) => { $(id).style.height = `${Math.max(140, rows * 30 + 40)}px`; };
+    const barScales = { x: { grid: { display: false }, ticks: { maxTicksLimit: 8, autoSkip: true } },
+      y: { ticks: { callback: randTick, maxTicksLimit: 5 } } };
+
+    // Two opposite things on one axis: first above zero, second below.
+    function upDownChart(id, labels, up, down, upLabel, downLabel) {
+      chart(id, {
+        type: "bar",
+        data: { labels: labels.map(monthLabel), datasets: [
+          { label: upLabel, data: up, backgroundColor: css("--pos"), borderRadius: 4, borderSkipped: "start", maxBarThickness: 18 },
+          { label: downLabel, data: down.map(v => -v), backgroundColor: css("--neg"), borderRadius: 4, borderSkipped: "start", maxBarThickness: 18 },
+        ] },
+        options: { maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+          plugins: { legend: { display: false }, tooltip: { ...tooltip, callbacks: { label: (c) => ` ${c.dataset.label}: ${money(Math.abs(c.parsed.y))}` } } },
+          scales: { ...barScales, x: { ...barScales.x, stacked: true }, y: { ...barScales.y, stacked: true } } },
+      });
+    }
+
+    function renderMonthly(c) {
+      const any = (arr) => arr.some(v => v);
+      $("#monthly-note").textContent = c.months.length
+        ? "Months come from your EasyEquities emails and statement history. Tap a bar for the amounts."
+        : "Connect EasyEquities (and Google for your email history) to fill these in.";
+      if (!c.months.length) return;
+      upDownChart("#flow-chart", c.months, c.money_in, c.money_out, "Deposits", "Withdrawals");
+      upDownChart("#income-chart", c.months, c.income, c.costs, "Dividends + interest", "Fees + tax");
+      $("#flow-chart").closest(".card").hidden = !any(c.money_in) && !any(c.money_out);
+      $("#income-chart").closest(".card").hidden = !any(c.income) && !any(c.costs);
+    }
+
+    function hbar(id, labels, values, colours, opts = {}) {
+      chart(id, {
+        type: "bar",
+        data: { labels, datasets: [{ label: opts.label || "Value", data: values, backgroundColor: colours, borderRadius: 4,
+          borderSkipped: "start", maxBarThickness: 18 }] },
+        options: { indexAxis: "y", maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { ...tooltip, callbacks: { label: opts.format ||
+            ((c) => ` ${c.dataset.label}: ${money(c.parsed.x)}`) } } },
+          scales: { x: { ticks: { callback: opts.tick || randTick, maxTicksLimit: 5 } }, y: { grid: { display: false },
+            ticks: { callback: function (v) { const l = this.getLabelForValue(v); return l.length > 22 ? l.slice(0, 21) + "…" : l; } } } } },
+      });
+    }
+
+    function renderHoldingCharts(s) {
+      const rows = s.holdings.filter(h => h.value > 0);
+      $("#holding-charts").hidden = !rows.length;
+      if (!rows.length) return;
+      const top = [...rows].sort((a, b) => b.value - a.value).slice(0, 12);
+      sizeBox("#top-box", top.length);
+      hbar("#top-chart", top.map(h => h.name || h.symbol), top.map(h => h.value), css("--series-1"));
+      const movers = rows.filter(h => h.cost).sort((a, b) => Math.abs(b.gain) - Math.abs(a.gain)).slice(0, 12);
+      sizeBox("#gain-box", movers.length);
+      hbar("#gain-chart", movers.map(h => h.name || h.symbol), movers.map(h => h.gain),
+        movers.map(h => h.gain < 0 ? css("--neg") : css("--pos")),
+        { label: "Gain", format: (c) => ` ${c.parsed.x < 0 ? "Loss" : "Gain"}: ${money(c.parsed.x)} (${pct(movers[c.dataIndex].gain_pct)})` });
+    }
+
+    function renderPropertyCharts(ep) {
+      if (!ep.length) return;
+      const rows = [...ep].sort((a, b) => b.value - a.value);
+      sizeBox("#ep-value-box", rows.length * 1.6);
+      chart("#ep-value-chart", {
+        type: "bar",
+        data: { labels: rows.map(h => h.name), datasets: [
+          { label: "Bought for", data: rows.map(h => h.cost), backgroundColor: css("--series-2"), borderRadius: 4, borderSkipped: "start", maxBarThickness: 12 },
+          { label: "Worth now", data: rows.map(h => h.value), backgroundColor: css("--series-1"), borderRadius: 4, borderSkipped: "start", maxBarThickness: 12 },
+        ] },
+        options: { indexAxis: "y", maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+          datasets: { bar: { categoryPercentage: 0.8, barPercentage: 0.9 } },
+          plugins: { legend: { display: false }, tooltip: { ...tooltip, callbacks: { label: (c) => ` ${c.dataset.label}: ${money(c.parsed.x)}` } } },
+          scales: { x: { ticks: { callback: randTick, maxTicksLimit: 5 } }, y: { grid: { display: false } } } },
+      });
+      const y = rows.filter(h => h.rental_yield != null).sort((a, b) => b.rental_yield - a.rental_yield);
+      $("#ep-yield-chart").closest(".card").hidden = !y.length;
+      sizeBox("#ep-yield-box", y.length);
+      hbar("#ep-yield-chart", y.map(h => h.name), y.map(h => h.rental_yield * 100), css("--series-1"),
+        { label: "Rental yield", tick: (v) => v + "%", format: (c) => ` Rental yield: ${c.parsed.x.toFixed(2)}%` });
+    }
+
+    function renderTradeChart(c) {
+      const has = c.buys.some(v => v) || c.sells.some(v => v);
+      $("#trade-wrap").hidden = !has;
+      if (!has) return;
+      chart("#trade-chart", {
+        type: "bar",
+        data: { labels: c.months.map(monthLabel), datasets: [
+          { label: "Bought", data: c.buys, backgroundColor: css("--series-1"), borderRadius: 4, borderSkipped: "start", maxBarThickness: 14 },
+          { label: "Sold", data: c.sells, backgroundColor: css("--series-2"), borderRadius: 4, borderSkipped: "start", maxBarThickness: 14 },
+        ] },
+        options: { maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+          plugins: { legend: { display: false }, tooltip }, scales: barScales },
       });
     }
 

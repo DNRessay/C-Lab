@@ -284,3 +284,59 @@ def record_all(db: Session):
         except Exception:
             db.rollback()
     return done
+
+
+def _month(d):
+    return d.isoformat()[:7] if d else None
+
+
+def monthly(db: Session, user_id: int):
+    """Per-month money in/out, buys/sells and income/costs, for the charts. All in rand."""
+    txns = list(db.scalars(select(InvestTxn).where(InvestTxn.user_id == user_id)))
+    conn = db.scalar(select(EEConnection).where(EEConnection.user_id == user_id))
+    statement = platform_transactions(conn) if conn and conn.snapshot else []
+    series = defaultdict(lambda: defaultdict(float))
+
+    has_deposits = any(t.kind == "deposit" for t in txns)
+    for t in txns:
+        m, amt = _month(t.date), float(t.amount or 0)
+        if t.kind == "deposit":
+            series["money_in"][m] += amt
+        elif t.kind == "withdrawal":
+            series["money_out"][m] += amt
+        elif t.kind == "buy":
+            series["buys"][m] += amt + float(t.fees or 0)
+        elif t.kind == "sell":
+            series["sells"][m] += amt
+        elif t.kind in ("dividend", "interest"):
+            series["income"][m] += amt
+        elif t.kind == "fee":
+            series["costs"][m] += amt
+        if t.kind in ("buy", "sell") and t.fees:
+            series["costs"][m] += float(t.fees)
+
+    rates = {}
+    for r in statement:
+        d, amt = _day(r["date"]), r["amount"]
+        if not d or amt is None:
+            continue
+        if r["currency"] not in rates:
+            rates[r["currency"]] = rand_rate(db, r["currency"]) or 0.0
+        m, v = _month(d), abs(amt) * rates[r["currency"]]
+        if r["category"] in ("dividend", "interest"):
+            series["income"][m] += v
+        elif r["category"] in ("fee", "tax"):
+            series["costs"][m] += v
+        elif r["category"] in ("deposit", "withdrawal") and not has_deposits and r["currency"] == "ZAR":
+            series["money_in" if r["category"] == "deposit" else "money_out"][m] += v
+
+    used = sorted({m for s in series.values() for m, v in s.items() if m and v})
+    if not used:
+        return {"months": [], **{k: [] for k in ("money_in", "money_out", "buys", "sells", "income", "costs")}}
+    months, (y, mo) = [], map(int, used[0].split("-"))
+    end = date.today().isoformat()[:7]
+    while f"{y:04d}-{mo:02d}" <= end:
+        months.append(f"{y:04d}-{mo:02d}")
+        y, mo = (y + 1, 1) if mo == 12 else (y, mo + 1)
+    return {"months": months, **{k: [round(series[k][m], 5) for m in months]
+                                 for k in ("money_in", "money_out", "buys", "sells", "income", "costs")}}

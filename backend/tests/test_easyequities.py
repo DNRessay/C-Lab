@@ -357,6 +357,13 @@ def test_connect_sync_and_portfolio(market):
 
     assert s["income"] == {"dividend": 2.5, "interest": 0.0, "fee": 1.15, "tax": 0.0}
 
+    c = api.get("/api/invest/charts", headers=h).json()
+    i = c["months"].index("2025-05")
+    assert c["money_in"][i] == 1676.0 and c["buys"][i] == pytest.approx(50.3)  # email deposit + Adcock buy
+    j = c["months"].index("2025-06")
+    assert c["income"][j] == pytest.approx(2.5) and c["costs"][j] == pytest.approx(1.15)  # statement dividend, fee
+    assert c["months"][-1] == date.today().isoformat()[:7]
+
     st = api.get("/api/ee/statements", headers=h).json()
     assert st[0] == {"id": 0, "name": "EE ZAR Aug 2026.pdf", "account": "EasyEquities ZAR"}
     pdf = api.get("/api/ee/statements/0", headers=h)
