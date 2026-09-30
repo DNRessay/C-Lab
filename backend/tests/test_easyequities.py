@@ -441,7 +441,7 @@ def test_sign_in_with_google(market, monkeypatch):
     monkeypatch.setattr(gmail, "fetch", lambda refresh, since_uid=0, uidvalidity="": (
         seen.update(refresh=refresh) or fake_messages(), 1790000000, "gmail"))
     r = api.get(f"/api/ee/google/callback?code=abc&state={state}", follow_redirects=False)
-    assert r.status_code == 302 and "google=ok" in r.headers["location"] and r.headers["location"].endswith("#easyequities")
+    assert r.status_code == 302 and "google=ok" in r.headers["location"] and r.headers["location"].endswith("#google")
     assert seen["code"] == "abc" and seen["refresh"] == "rt-123"  # the sealed token is unsealed for Gmail
     status = api.get("/api/ee", headers=h).json()["mail"]
     assert (status["method"], status["address"], status["status"]) == ("google", "me@gmail.com", "ok")

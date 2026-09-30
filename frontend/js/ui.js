@@ -63,7 +63,8 @@ export async function poll(fn, done, onTick, ms = 2000, maxTries = 450) {
 
 export const empty = (cols, text) => `<tr><td colspan="${cols}" class="muted">${esc(text)}</td></tr>`;
 
-// Top bar. `links` = [[id, label], ...] become menu items (#id); on phones they fold into a burger menu.
+// Top bar. `links` = [[id, label], ...] become menu items (#id); an entry [id, label, [[id, label], ...]] is a
+// dropdown group. On phones everything folds into a burger menu, with group items indented under their heading.
 export function page(links = []) {
   if (!tokens.isLoggedIn()) {
     location.href = "/login.html";
@@ -71,9 +72,16 @@ export function page(links = []) {
   }
   const nav = $("#nav");
   if (!nav) return;
-  nav.innerHTML = `<span class="watermark" aria-hidden="true">Charlie'$ Lab</span><a class="brand" href="/">C-Lab</a>
+  const item = ([id, label]) => `<a href="#${esc(id)}" data-tab="${esc(id)}">${esc(label)}</a>`;
+  const entry = (l) => l[2]
+    ? `<div class="group" data-group="${esc(l[0])}">
+         <button type="button" class="group-btn" aria-haspopup="true" aria-expanded="false">${esc(l[1])}<span class="caret">▾</span></button>
+         <div class="submenu" role="menu">${l[2].map(item).join("")}</div>
+       </div>`
+    : item(l);
+  nav.innerHTML = `<span class="wm-clip" aria-hidden="true"><span class="watermark">Charlie'$ Lab</span></span><a class="brand" href="/">C-Lab</a>
     <button class="menu" aria-label="Open menu" aria-expanded="false"><span></span><span></span><span></span></button>
-    <div class="links">${links.map(([id, label]) => `<a href="#${esc(id)}" data-tab="${esc(id)}">${esc(label)}</a>`).join("")}
+    <div class="links">${links.map(entry).join("")}
       <button id="logout" class="secondary small">Log out</button></div>`;
   const menu = $(".menu", nav);
   const setOpen = (open) => {
@@ -81,13 +89,27 @@ export function page(links = []) {
     menu.setAttribute("aria-expanded", open);
     menu.setAttribute("aria-label", open ? "Close menu" : "Open menu");
   };
+  const closeGroups = (except) => $$(".group", nav).forEach((g) => {
+    if (g === except) return;
+    g.classList.remove("open");
+    $(".group-btn", g).setAttribute("aria-expanded", "false");
+  });
   menu.addEventListener("click", () => setOpen(!nav.classList.contains("open")));
-  $$(".links a", nav).forEach((a) => a.addEventListener("click", () => setOpen(false)));
+  $$(".group-btn", nav).forEach((b) => b.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const g = b.closest(".group"), open = !g.classList.contains("open");
+    closeGroups(g);
+    g.classList.toggle("open", open);
+    b.setAttribute("aria-expanded", open);
+  }));
+  document.addEventListener("click", (e) => { if (!e.target.closest(".group")) closeGroups(); });
+  $$(".links a", nav).forEach((a) => a.addEventListener("click", () => { setOpen(false); closeGroups(); }));
   $("#logout").addEventListener("click", () => { tokens.clear(); location.href = "/login.html"; });
 }
 
 export function setActive(id) {
   $$("#nav .links a").forEach((a) => a.classList.toggle("active", a.dataset.tab === id));
+  $$("#nav .group").forEach((g) => g.classList.toggle("active", !!g.querySelector(`a[data-tab="${id}"]`)));
 }
 
 export function guestPage() {

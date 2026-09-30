@@ -58,11 +58,10 @@
 
     <!-- EasyEquities -->
     <section id="easyequities" hidden>
+      <h1>EasyEquities</h1>
       <div class="card" id="ee-status"></div>
-      <h2>Connections</h2>
-      <div class="fields">
         <div class="card">
-          <h3>EasyEquities login</h3>
+          <h3>Connect EasyEquities</h3>
           <p class="muted">Reads your accounts (including EasyProperties) and holdings at EasyEquities' own prices, every night and when you press Sync. Your password is stored encrypted and only used to read.</p>
           <form id="ee-platform-form">
             <div class="field"><label>Username or email</label><input name="username" autocomplete="off" required /></div>
@@ -70,8 +69,13 @@
             <div class="row"><button type="submit">Connect</button><button type="button" id="ee-platform-off" class="secondary" hidden>Disconnect</button></div>
           </form>
         </div>
+    </section>
+
+    <section id="google" hidden>
+      <h1>Google</h1>
+      <div class="card" id="google-status"></div>
         <div class="card">
-          <h3>Gmail (EasyEquities emails)</h3>
+          <h3>Sign in with Google</h3>
           <p class="muted">Reads only mail from easyequities.co.za: trade invoices, deposits, withdrawals, EasyProperties orders and corporate actions. Trades, deposits and withdrawals become transactions automatically.</p>
           <div class="row" id="ee-google-row">
             <button type="button" id="ee-google" class="gsi"><svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg><span>Sign in with Google</span></button>
@@ -79,7 +83,6 @@
           </div>
           <p class="muted" id="ee-google-note" style="margin:0.6rem 0 0">Google asks you to allow read-only access to your mail. C-Lab only searches for mail from easyequities.co.za, and you can remove its access any time in your Google account.</p>
         </div>
-      </div>
     </section>
 
     <!-- Holdings -->
@@ -225,7 +228,8 @@
       </div>
     </section>
     <!-- Account -->
-    <section id="account" hidden>
+    <section id="profile" hidden>
+      <h1>Profile</h1>
       <div class="card">
         <h3 id="who"></h3>
         <form id="pw-form">
@@ -242,8 +246,9 @@
     import { api } from "/js/api.js";
     import { $, $$, action, amount, badge, day, download, empty, esc, flash, money, onSubmit, page, pct, setActive } from "/js/ui.js";
 
-    const PAGES = [["markets", "Markets"], ["overview", "Portfolio"], ["easyequities", "EasyEquities"], ["holdings", "Holdings"],
-      ["transactions", "Transactions"], ["watchlist", "Watchlist"], ["property", "Property"], ["account", "Account"]];
+    const PAGES = [["markets", "Markets"], ["overview", "Portfolio"], ["holdings", "Holdings"], ["transactions", "Transactions"],
+      ["watchlist", "Watchlist"], ["property", "Property"],
+      ["account", "Account", [["profile", "Profile"], ["easyequities", "EasyEquities"], ["google", "Google"]]]];
     page(PAGES);
 
     const CLASS = { share: "Shares", etf: "ETFs", reit: "Property shares", easyproperties: "EasyProperties", crypto: "Crypto", other: "Other", cash: "Cash" };
@@ -452,11 +457,20 @@
       $("#ee-status").innerHTML =
         line("EasyEquities login", p.connected, p.status, p.error ? `Stopped at "${p.error_stage}": ${p.error}. Showing the last good read from ${ago(p.synced_at)}.` : "",
           p.connected ? `<small class="muted">${esc(p.username)} · last good read ${ago(p.synced_at)} · ${e.accounts.length} account(s)</small>` : "") +
-        line("Gmail", m.connected, m.status, m.error, m.connected ? `<small class="muted">${esc(m.address)} · checked ${ago(m.synced_at)}</small>` : "") +
         (warnings.length ? `<div class="msg warn">${warnings.map(esc).join("<br>")}</div>` : "") +
-        `<div class="row"><button id="ee-sync" ${p.connected || m.connected ? "" : "disabled"}>Sync now</button>
-          <button id="ee-reparse" class="secondary" ${m.connected ? "" : "hidden"}>Re-read all emails</button></div>
+        `<div class="row"><button id="ee-sync" ${p.connected ? "" : "disabled"}>Sync now</button></div>
         <p class="muted" style="margin:0.6rem 0 0">Your EasyEquities numbers show on Portfolio, Holdings, Transactions and Property. Demo accounts are left out.</p>`;
+      $("#google-status").innerHTML =
+        line("EasyEquities emails", m.connected, m.status, m.error,
+          m.connected ? `<small class="muted">${esc(m.address)}${m.method === "app_password" ? " (app password)" : ""} · checked ${ago(m.synced_at)}</small>` : "") +
+        `<div class="row"><button id="google-sync" ${m.connected ? "" : "disabled"}>Check for new emails</button>
+          <button id="ee-reparse" class="secondary" ${m.connected ? "" : "hidden"}>Re-read all emails</button></div>
+        <p class="muted" style="margin:0.6rem 0 0">Trades, deposits and withdrawals from these emails appear on Transactions; dividend decisions on Portfolio.</p>`;
+      action($("#google-sync"), async () => {
+        const r = await api.eeSync();
+        flash(`Checked.${r.new_emails ? ` ${r.new_emails} new email(s).` : " No new emails."}`);
+        renderEE(r);
+      });
       action($("#ee-sync"), async () => {
         const r = await api.eeSync();
         flash(`Synced.${r.new_emails ? ` ${r.new_emails} new email(s).` : ""}`);
@@ -491,10 +505,10 @@
       if (!g) return;
       flash(g === "ok" ? "Google connected. Your EasyEquities emails are on the Transactions page." : `Google sign-in didn't finish: ${q.get("detail") || "unknown error"}`,
         g === "ok" ? "ok" : "err");
-      history.replaceState(null, "", location.pathname + location.hash);
+      history.replaceState(null, "", location.pathname + "#google");
     })();
     action($("#ee-platform-off"), async () => { if (confirm("Disconnect EasyEquities and forget the password?")) renderEE(await api.eeDisconnectPlatform()); });
-    action($("#ee-mail-off"), async () => { if (confirm("Disconnect Gmail and forget the app password?")) renderEE(await api.eeDisconnectMail()); });
+    action($("#ee-mail-off"), async () => { if (confirm("Disconnect Google? C-Lab will stop reading your EasyEquities emails.")) renderEE(await api.eeDisconnectMail()); });
 
     // EasyEquities data on the other pages
     // charts (Chart.js). Series colours come from CSS tokens validated for the dark surface.
@@ -611,10 +625,11 @@
     $("#ee-kind").addEventListener("change", () => loadEEMails().catch(e => flash(e.message, "err")));
 
     // pages
-    const LOAD = { markets: loadMarkets, overview: loadSummary, easyequities: loadEE, holdings: loadSummary, transactions: loadTxns,
-      watchlist: loadWatch, property: loadProps, account: loadAccount };
+    const LOAD = { markets: loadMarkets, overview: loadSummary, easyequities: loadEE, google: loadEE, holdings: loadSummary,
+      transactions: loadTxns, watchlist: loadWatch, property: loadProps, profile: loadAccount };
+    const ALIAS = { account: "profile" };
     function show() {
-      const id = LOAD[location.hash.slice(1)] ? location.hash.slice(1) : "markets";
+      const hash = location.hash.slice(1), id = LOAD[hash] ? hash : ALIAS[hash] || "markets";
       $$("main section").forEach(s => s.hidden = s.id !== id);
       setActive(id);
       LOAD[id]().catch(e => flash(e.message, "err"));

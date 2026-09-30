@@ -47,7 +47,6 @@ nav {
   position: sticky;
   top: 0;
   z-index: 10;
-  overflow: hidden;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -57,7 +56,9 @@ nav {
   border-bottom: 1px solid var(--line);
 }
 nav .brand { position: relative; z-index: 1; font-weight: 800; color: var(--accent); text-decoration: none; letter-spacing: 0.02em; }
-/* "Charlie'$ Lab" sits behind the bar as faded orange lettering, not on top of anything. */
+/* "Charlie'$ Lab" sits behind the bar as faded orange lettering, not on top of anything.
+   It has its own clipping box so the bar itself can let dropdowns hang below it. */
+nav .wm-clip { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
 nav .watermark {
   position: absolute;
   left: 4.2rem;
@@ -79,6 +80,27 @@ nav .links a { color: var(--muted); text-decoration: none; font-size: 0.92rem; p
 nav .links a:hover { color: var(--text); }
 nav .links a.active { color: var(--accent); font-weight: 600; border-bottom-color: var(--accent); }
 nav #logout { margin-left: auto; }
+
+/* dropdown group (Account: Profile / EasyEquities / Google) */
+nav .group { position: relative; }
+nav .group-btn {
+  background: transparent; border: 0; border-bottom: 2px solid transparent; border-radius: 0;
+  color: var(--muted); font-size: 0.92rem; font-weight: 400; padding: 0.35rem 0; cursor: pointer;
+}
+nav .group-btn:hover:not(:disabled) { background: transparent; border-color: transparent; color: var(--text); }
+nav .group.active > .group-btn { color: var(--accent); font-weight: 600; border-bottom-color: var(--accent); }
+nav .caret { display: inline-block; margin-left: 0.3rem; font-size: 0.75em; transition: transform 0.15s ease; }
+nav .group.open .caret { transform: rotate(180deg); }
+nav .submenu {
+  display: none; position: absolute; top: calc(100% + 0.5rem); left: -0.75rem; min-width: 11rem;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 0.35rem;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5); z-index: 20;
+}
+nav .group.open .submenu { display: flex; flex-direction: column; }
+nav .submenu a { padding: 0.55rem 0.75rem; border-radius: 6px; border-bottom: 0; }
+nav .submenu a:hover { background: var(--accent-soft); color: var(--text); }
+nav .submenu a.active { background: var(--accent-soft); border-bottom: 0; }
+
 nav .menu {
   display: none;
   position: relative;
@@ -115,6 +137,15 @@ nav.open .menu span:nth-child(3) { top: calc(50% - 1px); transform: rotate(-45de
   nav.open .links { display: flex; }
   nav .links a { padding: 0.7rem 0.25rem; border-bottom: 1px solid var(--border); font-size: 1rem; }
   nav .links a.active { border-bottom-color: var(--border); color: var(--accent); }
+  /* in the burger, groups are just a heading with their pages indented under it */
+  nav .group-btn { display: block; width: 100%; text-align: left; padding: 0.7rem 0.25rem; font-size: 1rem;
+    border-bottom: 1px solid var(--border); pointer-events: none; color: var(--text); font-weight: 600; }
+  nav .group.active > .group-btn { border-bottom-color: var(--border); }
+  nav .caret { display: none; }
+  nav .submenu, nav .group.open .submenu { display: flex; flex-direction: column; position: static; min-width: 0;
+    background: transparent; border: 0; box-shadow: none; padding: 0; }
+  nav .submenu a { padding: 0.65rem 0.25rem 0.65rem 1.25rem; border-radius: 0; border-bottom: 1px solid var(--border); }
+  nav .submenu a.active { background: transparent; }
   nav.open .watermark { top: 1.9rem; transform: translateY(-50%); }
   nav #logout { margin: 0.75rem 0 0.25rem; align-self: flex-start; }
 }

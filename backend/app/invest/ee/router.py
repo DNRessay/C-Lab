@@ -134,7 +134,7 @@ def _back(result: str, detail: str = ""):
     from urllib.parse import quote
 
     return RedirectResponse(f"{settings.frontend_url}/?google={result}{'&detail=' + quote(detail[:200]) if detail else ''}"
-                            "#easyequities", status_code=302)
+                            "#google", status_code=302)
 
 
 @router.get("/google/callback")
