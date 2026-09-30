@@ -219,12 +219,15 @@ def holdings_from_account(detail, catalogue):
         vwap = _cents_to_rand(_num(_pick(h, "vwap", "averagePrice", "avgPrice")))
         if cost is None and vwap is not None:
             cost = qty * vwap
-        yld = _num(_pick(fin, "rentalYieldPercentage", "grossRentalYieldPercentage") or _pick(prop, "rentalYield"))
+        yld = _num(_pick(item, "rentalYield") or _pick(fin, "rentalYieldPercentage", "grossRentalYieldPercentage")
+                   or _pick(prop, "rentalYield"))
         out.append({"name": str(name)[:200], "contract_code": str(_pick(cat, "contractCode") or _pick(prop, "contractCode") or ""),
                     "shares": qty, "current_value": value, "purchase_value": cost,
                     "current_price": value / qty if value is not None else price,
                     # Yields run 0-3%: 0.89 means 0.89%, while a fraction would be tiny (0.0089).
-                    "rental_yield": (yld / 100 if yld is not None and yld >= 0.05 else yld), "view_url": "", "isin": ""})
+                    "rental_yield": (yld / 100 if yld is not None and yld >= 0.05 else yld), "view_url": "", "isin": "",
+                    "rental_income": _num(_pick(item, "rentalIncomeTotal")),
+                    "monthly_costs": _num(_pick(item, "monthlyCosts"))})
     return out
 
 

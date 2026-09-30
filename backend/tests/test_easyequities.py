@@ -176,7 +176,7 @@ import base64 as _b64, json as _json  # noqa: E402
 TOKEN = "h." + _b64.urlsafe_b64encode(_json.dumps({"userid": 4242}).encode()).decode().rstrip("=") + ".sig"
 EP_ACCOUNTS = [{"trustAccountId": 111, "tradingCurrencyId": 2}, {"trustAccountId": 555, "tradingCurrencyId": 66}]
 EP_ACCOUNT = {"trustAccountId": 555, "trustAccountValue": 316.0, "properties": [
-    {"property": {"id": 9}, "quantity": 87.2068, "vwap": 100.0},
+    {"property": {"id": 9}, "quantity": 87.2068, "vwap": 100.0, "rentalIncomeTotal": 1.23456},
     {"property": {"id": 12}, "quantity": 150, "vwap": 98.21},
 ]}
 EP_CATALOGUE = [
@@ -246,6 +246,7 @@ def test_easyproperties_login_and_holdings():
     assert (edge["name"], edge["shares"], edge["contract_code"]) == ("The Edge", 87.2068, "EQU.ZA.PROP9")
     assert edge["current_value"] == pytest.approx(117.73, abs=0.01) and edge["purchase_value"] == pytest.approx(87.21, abs=0.01)
     assert four["rental_yield"] == pytest.approx(0.0089)
+    assert edge["rental_income"] == 1.23456
     assert ep["shapes"]["user/account"]["properties"][1] == "x2"  # keys only, no values
     with pytest.raises(platform.PlatformError) as e:
         REAL_EP_FETCH("me", "wrong", session=FakeIdpSession(accept=False))
