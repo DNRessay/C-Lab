@@ -212,3 +212,13 @@ tbody tr:hover td { background: var(--accent-soft); }
 .btn.inline { display: inline-block; }
 nav #company { max-width: 14rem; }
 details summary { cursor: pointer; font-weight: 600; }
+
+/* Google sign-in button (Google's own look: white, G logo, Roboto-ish) */
+button.gsi {
+  display: inline-flex; align-items: center; gap: 0.7rem;
+  background: #fff; color: #1f1f1f; border: 1px solid #747775; border-radius: 999px;
+  padding: 0.55rem 1.1rem 0.55rem 0.8rem; font-weight: 500; font-family: Roboto, Arial, sans-serif;
+}
+button.gsi svg { width: 1.15rem; height: 1.15rem; }
+button.gsi:hover:not(:disabled) { background: #f2f2f2; border-color: #747775; }
+button.gsi:disabled { opacity: 0.5; }

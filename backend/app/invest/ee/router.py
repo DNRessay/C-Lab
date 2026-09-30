@@ -1,15 +1,19 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import Response
+from datetime import timedelta
+
+import jwt
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import RedirectResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ...deps import current_user, get_db
 from ...models import User
-from ...security import seal, unseal
-from . import platform
+from ...config import settings
+from ...security import make_token, read_token, seal, unseal
+from . import gmail, mail, platform
 from . import sync
 from .models import EEConnection, EEMail
 
@@ -61,6 +65,9 @@ def status(db: Session, conn: Optional[EEConnection]):
             "status": conn.mail_status if conn else "",
             "error": conn.mail_error if conn else "",
             "synced_at": _dt(conn.mail_synced_at) if conn else None,
+            "method": ("google" if conn and conn.mail_password.startswith(gmail.PREFIX) else
+                       "app_password" if conn and conn.mail_password else ""),
+            "google_available": gmail.configured(),
         },
         **view,
     }
@@ -103,6 +110,56 @@ def connect_mail(body: MailIn, user: User = Depends(current_user), db: Session =
     db.commit()
     sync.sync_mail(db, conn)
     return status(db, conn)
+
+
+def _api_base(request: Request):
+    base = settings.api_url or str(request.base_url).rstrip("/")
+    return base if "localhost" in base or "127.0.0.1" in base else base.replace("http://", "https://", 1)
+
+
+def _callback_url(request: Request):
+    return f"{_api_base(request)}/api/ee/google/callback"
+
+
+@router.get("/google/start")
+def google_start(request: Request, user: User = Depends(current_user)):
+    """URL of Google's sign-in screen (read-only Gmail) for the EasyEquities email reader."""
+    if not gmail.configured():
+        raise HTTPException(400, "Google sign-in isn't set up yet (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET).")
+    state = make_token("google", user.id, timedelta(minutes=10))
+    return {"url": gmail.auth_url(_callback_url(request), state)}
+
+
+def _back(result: str, detail: str = ""):
+    from urllib.parse import quote
+
+    return RedirectResponse(f"{settings.frontend_url}/?google={result}{'&detail=' + quote(detail[:200]) if detail else ''}"
+                            "#easyequities", status_code=302)
+
+
+@router.get("/google/callback")
+def google_callback(request: Request, code: str = "", state: str = "", error: str = "", db: Session = Depends(get_db)):
+    """Google sends the browser back here after sign-in; no login token in this request, the state carries the user."""
+    try:
+        user_id = int(read_token(state, "google")["sub"])
+    except (jwt.PyJWTError, KeyError, ValueError):
+        return _back("error", "The sign-in link expired. Try again.")
+    if error or not code:
+        return _back("error", "Google sign-in was cancelled." if error == "access_denied" else f"Google said: {error}")
+    user = db.get(User, user_id)
+    if not user:
+        return _back("error", "Unknown user.")
+    try:
+        tokens = gmail.exchange(code, _callback_url(request))
+    except mail.MailError as e:
+        return _back("error", str(e))
+    conn = connection(db, user, create=True)
+    if conn.mail_address.lower() != tokens["email"].lower() or not conn.mail_password.startswith(gmail.PREFIX):
+        conn.mail_last_uid, conn.mail_uidvalidity = 0, ""
+    conn.mail_address, conn.mail_password = tokens["email"], gmail.PREFIX + seal(tokens["refresh_token"])
+    db.commit()
+    sync.sync_mail(db, conn)
+    return _back("ok" if conn.mail_status == "ok" else "error", conn.mail_error)
 
 
 @router.delete("/mail")

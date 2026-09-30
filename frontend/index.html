@@ -73,18 +73,11 @@
         <div class="card">
           <h3>Gmail (EasyEquities emails)</h3>
           <p class="muted">Reads only mail from easyequities.co.za: trade invoices, deposits, withdrawals, EasyProperties orders and corporate actions. Trades, deposits and withdrawals become transactions automatically.</p>
-          <form id="ee-mail-form">
-            <div class="field"><label>Gmail address</label><input name="address" type="email" required /></div>
-            <div class="field"><label>Gmail app password</label><input name="app_password" type="password" autocomplete="new-password" required placeholder="16 letters" /></div>
-            <div class="row"><button type="submit">Connect</button><button type="button" id="ee-mail-off" class="secondary" hidden>Disconnect</button></div>
-          </form>
-          <details style="margin-top:0.6rem"><summary>How to get an app password</summary>
-            <ol class="muted" style="padding-left:1.2rem">
-              <li>Turn on 2-Step Verification on the Google account (myaccount.google.com → Security).</li>
-              <li>Open <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">myaccount.google.com/apppasswords</a>, name it "C-Lab" and create it.</li>
-              <li>Paste the 16-letter password here. You can revoke it there any time.</li>
-            </ol>
-          </details>
+          <div class="row" id="ee-google-row">
+            <button type="button" id="ee-google" class="gsi"><svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg><span>Sign in with Google</span></button>
+            <button type="button" id="ee-mail-off" class="secondary" hidden>Disconnect</button>
+          </div>
+          <p class="muted" id="ee-google-note" style="margin:0.6rem 0 0">Google asks you to allow read-only access to your mail. C-Lab only searches for mail from easyequities.co.za, and you can remove its access any time in your Google account.</p>
         </div>
       </div>
     </section>
@@ -476,7 +469,9 @@
       $("#ee-platform-off").hidden = !p.connected;
       $("#ee-mail-off").hidden = !m.connected;
       if (p.connected) $("#ee-platform-form").username.value = p.username;
-      if (m.connected) $("#ee-mail-form").address.value = m.address;
+      $("#ee-google span").textContent = m.method === "google" ? "Switch Google account" : "Sign in with Google";
+      $("#ee-google").disabled = !m.google_available;
+      if (!m.google_available) $("#ee-google-note").textContent = "Google sign-in isn't switched on for this app yet.";
     }
     const loadEE = async () => renderEE(await api.ee());
     onSubmit($("#ee-platform-form"), async (d, e) => {
@@ -486,13 +481,18 @@
       renderEE(r);
       flash(r.platform.status === "ok" ? "Connected. See Portfolio, Holdings and Transactions." : `Saved, but the first read failed: ${r.platform.error}`, r.platform.status === "ok" ? "ok" : "err");
     });
-    onSubmit($("#ee-mail-form"), async (d, e) => {
-      flash("Reading your EasyEquities emails… the first time can take a minute.", "warn");
-      const r = await api.eeConnectMail(d);
-      e.target.app_password.value = "";
-      renderEE(r);
-      flash(r.mail.status === "ok" ? "Gmail connected. Email activity is on the Transactions page." : `Saved, but reading mail failed: ${r.mail.error}`, r.mail.status === "ok" ? "ok" : "err");
+    action($("#ee-google"), async () => {
+      const { url } = await api.eeGoogleStart();
+      location.href = url;  // Google's own sign-in screen; it sends you back here
     });
+    // Back from Google: ?google=ok|error[&detail=...]
+    (() => {
+      const q = new URLSearchParams(location.search), g = q.get("google");
+      if (!g) return;
+      flash(g === "ok" ? "Google connected. Your EasyEquities emails are on the Transactions page." : `Google sign-in didn't finish: ${q.get("detail") || "unknown error"}`,
+        g === "ok" ? "ok" : "err");
+      history.replaceState(null, "", location.pathname + location.hash);
+    })();
     action($("#ee-platform-off"), async () => { if (confirm("Disconnect EasyEquities and forget the password?")) renderEE(await api.eeDisconnectPlatform()); });
     action($("#ee-mail-off"), async () => { if (confirm("Disconnect Gmail and forget the app password?")) renderEE(await api.eeDisconnectMail()); });
 

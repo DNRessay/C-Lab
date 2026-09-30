@@ -48,6 +48,11 @@ class Settings:
         self.email_use_tls = _flag("EMAIL_USE_TLS", "true")
         self.default_from_email = _env("DEFAULT_FROM_EMAIL", "C-Lab <noreply@example.com>")
 
+        # "Sign in with Google" for the EasyEquities email reader (read-only Gmail).
+        self.google_client_id = _env("GOOGLE_CLIENT_ID")
+        self.google_client_secret = _env("GOOGLE_CLIENT_SECRET")
+        self.api_url = _env("API_URL").rstrip("/")  # public URL of this API; defaults to the request's own
+
         self.mysql_ssl_ca = _env("MYSQL_SSL_CA")
 
 

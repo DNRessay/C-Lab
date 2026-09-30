@@ -31,6 +31,14 @@ Parameters:
     Type: String
     NoEcho: true
     Default: ""
+  GoogleClientId:
+    Type: String
+    Default: ""
+    Description: OAuth client for "Sign in with Google" (read-only Gmail for EasyEquities emails).
+  GoogleClientSecret:
+    Type: String
+    NoEcho: true
+    Default: ""
   DefaultFromEmail:
     Type: String
     Default: "C-Lab <noreply@example.com>"
@@ -56,6 +64,8 @@ Resources:
           EMAIL_HOST_USER: !Ref EmailHostUser
           EMAIL_HOST_PASSWORD: !Ref EmailHostPassword
           DEFAULT_FROM_EMAIL: !Ref DefaultFromEmail
+          GOOGLE_CLIENT_ID: !Ref GoogleClientId
+          GOOGLE_CLIENT_SECRET: !Ref GoogleClientSecret
       FunctionUrlConfig:
         AuthType: NONE
       Events:

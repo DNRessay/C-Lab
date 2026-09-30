@@ -38,6 +38,8 @@ jobs:
       EMAIL_HOST: ${{ secrets.EMAIL_HOST }}
       EMAIL_HOST_USER: ${{ secrets.EMAIL_HOST_USER }}
       EMAIL_HOST_PASSWORD: ${{ secrets.EMAIL_HOST_PASSWORD }}
+      GOOGLE_CLIENT_ID: ${{ secrets.CLAB_GOOGLE_CLIENT_ID || secrets.GOOGLE_CLIENT_ID }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.CLAB_GOOGLE_CLIENT_SECRET || secrets.GOOGLE_CLIENT_SECRET }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
@@ -102,6 +104,7 @@ jobs:
           params=("SecretKey=$SECRET_KEY" "DatabaseUrl=$DATABASE_URL" "FrontendUrl=$FRONTEND_URL")
           [ -n "$SIGNUP_EMAILS" ] && params+=("SignupEmails=$SIGNUP_EMAILS")
           [ -n "$EMAIL_HOST" ] && params+=("EmailHost=$EMAIL_HOST" "EmailHostUser=$EMAIL_HOST_USER" "EmailHostPassword=$EMAIL_HOST_PASSWORD")
+          [ -n "$GOOGLE_CLIENT_ID" ] && params+=("GoogleClientId=$GOOGLE_CLIENT_ID" "GoogleClientSecret=$GOOGLE_CLIENT_SECRET")
           aws cloudformation deploy --template-file packaged.yaml --stack-name "$STACK" --region "$AWS_REGION" \
             --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND --no-fail-on-empty-changeset \
             --parameter-overrides "${params[@]}"

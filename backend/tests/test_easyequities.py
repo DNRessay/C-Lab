@@ -419,3 +419,38 @@ def test_other_users_cannot_see_mail(market):
     other = register("nosy")
     assert api.get("/api/ee/mails", headers=other).json() == []
     assert api.get("/api/ee/mails/1", headers=other).status_code == 404
+
+
+def test_sign_in_with_google(market, monkeypatch):
+    from app.config import settings
+    from app.invest.ee import gmail
+
+    h = register("eeuser")
+    assert api.get("/api/ee/google/start", headers=h).status_code == 400  # not configured yet
+    monkeypatch.setattr(settings, "google_client_id", "cid.apps.googleusercontent.com")
+    monkeypatch.setattr(settings, "google_client_secret", "secret")
+    from urllib.parse import unquote
+
+    url = unquote(api.get("/api/ee/google/start", headers=h).json()["url"])
+    assert "gmail.readonly" in url and "access_type=offline" in url and "/api/ee/google/callback" in url
+    state = url.split("state=")[1].split("&")[0]
+
+    seen = {}
+    monkeypatch.setattr(gmail, "exchange", lambda code, redirect: seen.update(code=code, redirect=redirect) or
+                        {"refresh_token": "rt-123", "access_token": "at", "email": "me@gmail.com"})
+    monkeypatch.setattr(gmail, "fetch", lambda refresh, since_uid=0, uidvalidity="": (
+        seen.update(refresh=refresh) or fake_messages(), 1790000000, "gmail"))
+    r = api.get(f"/api/ee/google/callback?code=abc&state={state}", follow_redirects=False)
+    assert r.status_code == 302 and "google=ok" in r.headers["location"] and r.headers["location"].endswith("#easyequities")
+    assert seen["code"] == "abc" and seen["refresh"] == "rt-123"  # the sealed token is unsealed for Gmail
+    status = api.get("/api/ee", headers=h).json()["mail"]
+    assert (status["method"], status["address"], status["status"]) == ("google", "me@gmail.com", "ok")
+    db = SessionLocal()
+    conn = db.query(EEConnection).filter(EEConnection.mail_address == "me@gmail.com").one()
+    assert conn.mail_password.startswith("oauth:enc:") and "rt-123" not in conn.mail_password
+    db.close()
+
+    bad = api.get("/api/ee/google/callback?code=abc&state=forged", follow_redirects=False)
+    assert "google=error" in bad.headers["location"]
+    denied = api.get(f"/api/ee/google/callback?error=access_denied&state={state}", follow_redirects=False)
+    assert "google=error" in denied.headers["location"] and "cancelled" in denied.headers["location"]

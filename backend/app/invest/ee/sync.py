@@ -224,10 +224,17 @@ def import_txn(db: Session, row: EEMail):
 
 
 def sync_mail(db: Session, conn: EEConnection, fetcher=None):
-    fetch = fetcher or mail.fetch
+    from . import gmail
+
     try:
-        messages, last_uid, validity = fetch(conn.mail_address, unseal(conn.mail_password),
-                                             since_uid=conn.mail_last_uid, uidvalidity=conn.mail_uidvalidity)
+        if conn.mail_password.startswith(gmail.PREFIX):  # signed in with Google
+            messages, last_uid, validity = (fetcher or gmail.fetch)(
+                unseal(conn.mail_password[len(gmail.PREFIX):]), since_uid=conn.mail_last_uid,
+                uidvalidity=conn.mail_uidvalidity)
+        else:  # older app-password connections keep working over IMAP
+            messages, last_uid, validity = (fetcher or mail.fetch)(
+                conn.mail_address, unseal(conn.mail_password), since_uid=conn.mail_last_uid,
+                uidvalidity=conn.mail_uidvalidity)
     except mail.MailError as e:
         conn.mail_status, conn.mail_error = "error", str(e)[:500]
         db.commit()

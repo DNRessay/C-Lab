@@ -111,6 +111,7 @@ export const api = {
   eeConnectPlatform: (b) => put("/api/ee/platform", b),
   eeDisconnectPlatform: () => del("/api/ee/platform"),
   eeConnectMail: (b) => put("/api/ee/mail", b),
+  eeGoogleStart: () => get("/api/ee/google/start"),
   eeDisconnectMail: () => del("/api/ee/mail"),
   eeSync: () => post("/api/ee/sync"),
   eeReparse: () => post("/api/ee/reparse"),
