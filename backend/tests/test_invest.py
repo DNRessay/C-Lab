@@ -167,3 +167,20 @@ def test_private_to_each_user(me):
     assert api.get("/api/invest/summary", headers=other).json()["holdings"] == []
     mine = api.get("/api/invest/transactions", headers=me).json()[0]
     assert api.delete(f"/api/invest/transactions/{mine['id']}", headers=other).status_code == 404
+
+
+def test_money_flows_prefer_statement_with_withdrawals():
+    from datetime import date as d
+    from types import SimpleNamespace as T
+
+    from app.invest.portfolio import money_flows
+
+    txns = [T(date=d(2025, 1, 5), kind="deposit", amount="1000", source="easyequities", fees=0),  # from an email
+            T(date=d(2025, 3, 1), kind="deposit", amount="200", source="manual", fees=0)]
+    statement = [{"date": "2025-01-05", "category": "deposit", "amount": 1000.0, "currency": "ZAR"},
+                 {"date": "2025-02-10", "category": "withdrawal", "amount": -400.0, "currency": "ZAR"},  # no email for it
+                 {"date": "2025-02-11", "category": "withdrawal", "amount": -5.0, "currency": "USD"}]
+    flows, known = money_flows(txns, statement)
+    assert known and sum(a for _, a in flows) == 800  # 1000 - 400 + 200 hand-entered
+    flows, known = money_flows(txns, [])
+    assert known and sum(a for _, a in flows) == 1200

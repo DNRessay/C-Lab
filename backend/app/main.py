@@ -142,6 +142,25 @@ def admin(event):
             return {"ok": True, "links": links[:40], "url": url, "title": title, "published": str(published),
                     "lines": lines[start:start + count], "total_lines": len(lines),
                     "parsed": [{**i, "ldt": str(i["ldt"]), "pay_date": str(i["pay_date"])} for i in blog.parse_dividends(lines)][:30]}
+        if event.get("action") == "flows_check":
+            # Money-in/out as C-Lab sees it, and the labels behind transfer/other lines (digits masked).
+            from collections import Counter
+
+            from .invest.ee.models import EEConnection
+            from .invest.ee.sync import statement_rows
+            from .invest.portfolio import statement_flows
+
+            conn = db.scalar(select(EEConnection).where(EEConnection.user_id == user.id))
+            rows = statement_rows(db, conn)
+            flows = statement_flows(rows)
+            labels = Counter()
+            for r in rows:
+                if r["category"] in ("transfer", "other", "withdrawal", "deposit"):
+                    text = re.sub(r"\d", "9", f'{r["category"]}: {r.get("action", "")} | {r.get("comment", "")}')[:90]
+                    labels[text] += 1
+            return {"ok": True, "deposits": float(sum(a for _, a in flows if a > 0)),
+                    "withdrawals": float(sum(-a for _, a in flows if a < 0)), "lines": len(rows),
+                    "labels": labels.most_common(40)}
         if event.get("action") == "refresh_blog":
             from .invest import blog
 

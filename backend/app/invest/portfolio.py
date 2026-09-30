@@ -73,6 +73,17 @@ def contributions(txns):
             for t in txns if t.kind in ("buy", "sell")]
 
 
+def money_flows(txns, statement):
+    """(dated money in/out, whether real deposits are known). EasyEquities' statement has every deposit AND
+    withdrawal, so when it's there it wins over emails (which can miss withdrawals); hand-entered ones are added."""
+    stmt = statement_flows(statement)
+    if stmt:
+        manual = [(t.date, Decimal(t.amount) if t.kind == "deposit" else -Decimal(t.amount))
+                  for t in txns if t.source != "easyequities" and t.kind in ("deposit", "withdrawal")]
+        return sorted(stmt + manual), True
+    return contributions(txns), any(t.kind == "deposit" for t in txns)
+
+
 def what_if(db: Session, flows, symbol):
     """Value today had each contribution bought `symbol` on the same day (price only, no dividends)."""
     row = prices.quote(db, symbol)
@@ -146,15 +157,9 @@ def summary(db: Session, user_id: int):
         })
     rows.sort(key=lambda r: -r["value"])
 
-    flows = contributions(txns)
-    has_deposits = any(t.kind == "deposit" for t in txns)
     statement = statement_rows(db, conn) if ee_view else []
     income = statement_income(db, statement)
-    if not has_deposits:
-        # EasyEquities' statement has every deposit and withdrawal: use it as the money-in history.
-        stmt_flows = statement_flows(statement)
-        if stmt_flows:
-            flows, has_deposits = stmt_flows, True
+    flows, has_deposits = money_flows(txns, statement)
     if ee_view:
         # Cash sitting in EasyEquities wallets, straight from EasyEquities.
         cash = Decimal(str(round(sum(a["cash_zar"] for a in ee_view["accounts"]), 2)))
