@@ -26,6 +26,17 @@
         <tbody id="market-rows" class="wrap-first"></tbody>
       </table></div>
       <div id="sum-markets"></div>
+      <div id="pulse-markets"></div>
+      <div class="card" id="tech-wrap" hidden>
+        <div class="ai-head"><h3 id="tech-title">Technical view</h3><select id="tech-pick" aria-label="Pick a market or holding"></select></div>
+        <p class="muted" id="tech-reads"></p>
+        <div class="legend"><span><i style="background:var(--series-1)"></i>Price</span><span><i style="background:var(--series-2)"></i>50-day average</span><span><i style="background:var(--muted)"></i>Bollinger bands</span></div>
+        <div class="chart-box"><canvas id="tech-chart" role="img" aria-label="Price with Bollinger bands and 50-day average"></canvas></div>
+        <h3>RSI (14)</h3>
+        <div class="chart-box short"><canvas id="rsi-chart" role="img" aria-label="Relative strength index"></canvas></div>
+        <h3>MACD histogram</h3>
+        <div class="chart-box short"><canvas id="macd-chart" role="img" aria-label="MACD histogram"></canvas></div>
+      </div>
       <p class="muted">Rand pairs show rand per 1 unit of the foreign currency, so a rising number means a weaker rand.</p>
     </section>
 
@@ -81,6 +92,7 @@
       </div>
       <div id="sum-overview"></div>
       <div class="ai-box" id="ai-overview" data-section="overview"></div>
+      <div id="pulse-overview"></div>
       <div id="ee-overview" hidden>
         <h2>EasyEquities accounts</h2>
         <div class="card"><div class="chart-box short"><canvas id="account-chart" aria-label="Value per EasyEquities account" role="img"></canvas></div></div>
@@ -502,6 +514,7 @@
       renderBlog(s.blog);
       api.investMoney().then(mp => renderMoney(mp, s)).catch(e => flash(e.message, "err"));
       summaryOverview(s);
+      loadPulse("#pulse-overview", true).catch(() => {});
       summaryHoldings(s);
       renderCharts(s);
       renderHoldingCharts(s);
@@ -691,6 +704,7 @@
         ${pctCell(m.change_1d)}${pctCell(m.change_1m)}${pctCell(m.change_1y)}
         <td class="num"><small>${m.low_52w != null ? `${fmt(m, m.low_52w)} – ${fmt(m, m.high_52w)}` : ""}</small></td></tr>`).join("");
       summaryMarkets(markets);
+      loadPulse("#pulse-markets", false).catch(() => {});
     }
 
     // account
@@ -1604,6 +1618,82 @@
     onSubmit($("#chat-form"), async (d, e) => { e.target.reset(); await ask(d.q.trim()); });
     $("#chat-form").q.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#chat-form").requestSubmit(); } });
     $("#chat-clear").addEventListener("click", () => { chatMsgs = []; saveChat(); renderChat(); });
+
+    // Market pulse: SA news + sentiment, calendar, outlook, technicals.
+    const MOOD = { positive: ["positive", "ok"], negative: ["negative", "warn"], mixed: ["mixed", ""], neutral: ["neutral", "muted"] };
+    const TOPIC = { jse: "JSE", rand: "Rand", sarb: "SARB & rates", economy: "SA economy" };
+    let pulseData = null;
+    async function loadPulse(target, compact, refresh = false) {
+      const box = $(target);
+      if (!box) return;
+      try { pulseData = await api.pulse(refresh); } catch (e) { box.innerHTML = ""; return; }
+      renderPulse(box, pulseData, compact);
+    }
+    function renderPulse(box, p, compact) {
+      const o = p.outlook, sent = p.sentiment, total = (sent.positive + sent.negative + sent.neutral) || 1;
+      const news = Object.entries(p.news).filter(([, v]) => v.length);
+      const bar = `<div class="sent-bar" role="img" aria-label="${sent.positive} positive, ${sent.neutral} neutral, ${sent.negative} negative headlines">
+        <span style="width:${sent.positive / total * 100}%;background:var(--pos)"></span><span style="width:${sent.neutral / total * 100}%;background:var(--muted)"></span>
+        <span style="width:${sent.negative / total * 100}%;background:var(--neg)"></span></div>
+        <small class="muted">${sent.positive} positive · ${sent.neutral} neutral · ${sent.negative} negative headlines</small>`;
+      const cal = p.calendar.slice(0, compact ? 5 : 12).map(e => `<li><strong>${day(e.date)}</strong> ${esc(e.event)} <small class="muted">${esc(e.country)}</small>
+        <br><small>${esc(e.expect || e.why || "")}${e.link ? ` · <a href="${esc(e.link)}" target="_blank" rel="noopener">${esc(e.source || "source")}</a>` : e.rule ? " · usual schedule" : ""}</small></li>`).join("");
+      const heads = (items) => items.map(a => `<li><a href="${esc(a.link)}" target="_blank" rel="noopener">${esc(a.title)}</a> ${badge(...MOOD[a.sentiment])}
+        <br><small class="muted">${esc(a.source)}${a.date ? ` · ${a.date}` : ""}</small></li>`).join("");
+      const tech = Object.entries(p.technical).map(([sym, t]) => `<div class="card tech-card" data-sym="${esc(sym)}"><strong>${esc(t.label)}</strong> ${badge(t.bias, t.bias === "up" ? "ok" : t.bias === "down" ? "warn" : "")}
+        <div class="value" style="font-size:1.2rem;font-weight:700">${amount(t.last)}</div><small class="muted">${t.change_1m != null ? pct(t.change_1m) + " in a month · " : ""}RSI ${t.rsi ?? "—"}</small></div>`).join("");
+      box.innerHTML = `<div class="card pulse"><div class="ai-head"><h3>Market pulse: South Africa</h3>
+        <div class="row">${o?.mood ? badge(...MOOD[o.mood]) : ""}<button class="secondary small pulse-refresh">Refresh</button></div></div>
+        <small class="muted">Updated ${day(p.built_at)} ${p.built_at.slice(11, 16)} UTC${p.sources.news ? "" : " · add SERPAPI_KEYS for live news"}</small>
+        ${o ? `<div class="outlook"><h4>What we expect <small class="muted">(an outlook, not advice)</small></h4>
+          <p><strong>Rand:</strong> ${esc(o.rand || "")}</p><p><strong>JSE:</strong> ${esc(o.jse || "")}</p>
+          ${o.watch?.length ? `<p><strong>Watch:</strong> ${o.watch.map(esc).join(" · ")}</p>` : ""}</div>` : ""}
+        <div class="pulse-grid">
+          <div><h4>Coming up</h4><ul class="plain">${cal || `<li class="muted">No dated events yet.</li>`}</ul></div>
+          <div><h4>News mood</h4>${news.length ? bar : `<p class="muted">No news yet.</p>`}
+            ${compact ? `<ul class="plain">${heads(news.flatMap(([, v]) => v).slice(0, 5))}</ul>` : ""}</div>
+        </div>
+        ${compact ? `<p><a href="#markets">More news and the technical charts on Markets →</a></p>`
+          : `${news.map(([k, v]) => `<details class="section"><summary><span>${esc(TOPIC[k] || k.replace(/^h:/, ""))}</span><span class="count">${v.length}</span></summary><ul class="plain">${heads(v)}</ul></details>`).join("")}
+             <h4>Technicals</h4><div class="grid">${tech}</div>`}</div>`;
+      $(".pulse-refresh", box).addEventListener("click", async (e) => {
+        e.target.disabled = true; flash("Fetching the latest news…", "warn");
+        await loadPulse("#" + box.id, compact, true); flash("Market pulse updated.");
+      });
+      if (!compact) {
+        $$(".tech-card", box).forEach(c => c.addEventListener("click", () => { $("#tech-pick").value = c.dataset.sym; loadTech(c.dataset.sym); }));
+        setupTech(p);
+      }
+    }
+    async function setupTech(p) {
+      const s = await api.investSummary().catch(() => ({ holdings: [] }));
+      const opts = [...Object.entries(p.technical).map(([k, t]) => [k, t.label]),
+        ...s.holdings.filter(h => h.symbol && /\.|^[A-Z]{1,5}$/.test(h.symbol) && h.asset_class !== "easyproperties").slice(0, 15).map(h => [h.symbol, h.name || h.symbol])];
+      $("#tech-pick").innerHTML = opts.map(([k, l]) => `<option value="${esc(k)}">${esc(l)}</option>`).join("");
+      $("#tech-wrap").hidden = !opts.length;
+      if (opts.length) loadTech(opts[0][0]);
+    }
+    async function loadTech(sym) {
+      const t = await api.technical(sym);
+      if (!t.series) { $("#tech-reads").textContent = "Not enough price history for this one."; return; }
+      $("#tech-title").textContent = `Technical view: ${t.name || sym}`;
+      $("#tech-reads").textContent = t.reads.join(" · ");
+      const labels = t.series.dates.map(d => d.slice(5));
+      const line = (label, data, colour, extra = {}) => ({ label, data, borderColor: colour, backgroundColor: colour, borderWidth: 1.5, pointRadius: 0, tension: 0.15, spanGaps: true, ...extra });
+      chart("#tech-chart", { type: "line", data: { labels, datasets: [
+          line("Price", t.series.close, css("--series-1"), { borderWidth: 2 }), line("50-day average", t.series.sma50, css("--series-2")),
+          line("Upper band", t.series.bb_upper, css("--muted"), { borderDash: [4, 4] }), line("Lower band", t.series.bb_lower, css("--muted"), { borderDash: [4, 4] })] },
+        options: { maintainAspectRatio: false, interaction: { mode: "index", intersect: false }, plugins: { legend: { display: false },
+          tooltip: { ...tooltip, callbacks: { label: (c) => ` ${c.dataset.label}: ${amount(c.parsed.y)}` } } },
+          scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 6 } }, y: { ticks: { maxTicksLimit: 5 } } } } });
+      chart("#rsi-chart", { type: "line", data: { labels, datasets: [line("RSI", t.series.rsi, css("--series-1"), { borderWidth: 2 }),
+          line("70", labels.map(() => 70), css("--neg"), { borderDash: [3, 3], borderWidth: 1 }), line("30", labels.map(() => 30), css("--pos"), { borderDash: [3, 3], borderWidth: 1 })] },
+        options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip }, scales: { x: { display: false }, y: { min: 0, max: 100, ticks: { stepSize: 30 } } } } });
+      chart("#macd-chart", { type: "bar", data: { labels, datasets: [{ label: "MACD histogram", data: t.series.macd_hist,
+          backgroundColor: t.series.macd_hist.map(v => v >= 0 ? css("--pos") : css("--neg")) }] },
+        options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip }, scales: { x: { display: false }, y: { ticks: { maxTicksLimit: 4 } } } } });
+    }
+    $("#tech-pick").addEventListener("change", (e) => loadTech(e.target.value).catch(err => flash(err.message, "err")));
 
     // pages
     const LOAD = { markets: loadMarkets, overview: loadSummary, easyequities: loadEE, google: loadEE, holdings: loadSummary,

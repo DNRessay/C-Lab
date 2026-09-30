@@ -56,6 +56,7 @@ class Settings:
         self.cohere_model = _env("COHERE_MODEL", "command-a-03-2025")
         self.groq_api_keys = _list("GROQ_API_KEYS") or _list("GROQ_API_KEY")
         self.groq_model = _env("GROQ_MODEL", "llama-3.3-70b-versatile")
+        self.serpapi_keys = _list("SERPAPI_KEYS") or _list("SERPAPI_KEY")  # real news for the market pulse
         self.api_url = _env("API_URL").rstrip("/")  # public URL of this API; defaults to the request's own
 
         self.mysql_ssl_ca = _env("MYSQL_SSL_CA")

@@ -126,6 +126,22 @@ def money(user: User = Depends(current_user), db: Session = Depends(get_db)):
     return portfolio.money_picture(db, user.id)
 
 
+@router.get("/pulse")
+def market_pulse(refresh: bool = False, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from . import pulse
+
+    names = [h.get("name") or h["symbol"] for h in sorted(portfolio.summary(db, user.id)["holdings"], key=lambda h: -h["value"])
+             if h.get("asset_class") != "easyproperties"] if refresh else []
+    return pulse.get(db, names, refresh)
+
+
+@router.get("/technical/{symbol}")
+def technical_chart(symbol: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from . import pulse
+
+    return pulse.chart(db, symbol.strip().upper())
+
+
 @router.get("/quote/{symbol}")
 def quote(symbol: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
     row = prices.quote(db, symbol)

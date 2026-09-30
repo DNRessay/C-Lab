@@ -228,6 +228,13 @@ def handler(event, context):
                 logging.exception("Nightly bank statement read failed")
                 db.rollback()
             try:
+                from .invest import pulse
+
+                pulse.get(db, refresh=True)
+            except Exception:
+                logging.exception("Nightly market pulse failed")
+                db.rollback()
+            try:
                 from .invest.blog import refresh
 
                 result["blog"] = refresh(db)

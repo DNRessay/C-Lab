@@ -388,3 +388,12 @@ tr.dim td { opacity: 0.6; }
 .chat-form textarea { width: 100%; resize: vertical; margin-bottom: 0.5rem; }
 .cat-edit { background: none; border: 0; padding: 0; cursor: pointer; }
 .cat-edit:hover .badge { outline: 1px solid var(--accent); }
+.pulse h4 { margin: 0.9rem 0 0.4rem; }
+.outlook { margin-top: 0.6rem; padding: 0.6rem 0.8rem; border-radius: 10px; background: var(--panel-2); }
+.outlook p { margin: 0.3rem 0; line-height: 1.5; }
+.pulse-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0 1.5rem; }
+ul.plain { list-style: none; padding: 0; margin: 0; }
+ul.plain li { padding: 0.45rem 0; border-bottom: 1px solid var(--line); line-height: 1.4; }
+.sent-bar { display: flex; height: 10px; border-radius: 6px; overflow: hidden; margin: 0.3rem 0; background: var(--panel-2); }
+.tech-card { cursor: pointer; }
+.tech-card:hover { border-color: var(--accent); }
