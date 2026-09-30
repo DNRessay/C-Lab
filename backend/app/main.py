@@ -92,6 +92,25 @@ def admin(event):
             db.add(row)
             db.commit()
             return {"ok": True, **{k: v for k, v in reader.status(db, user.id).items() if k != "last_read"}}
+        if event.get("action") == "statement_shape":
+            # Layout only (letters -> a, digits -> 9) of a stored statement, plus which lines the parser took.
+            from .invest.ee.models import EEStatementDoc
+
+            docs = list(db.scalars(select(EEStatementDoc).where(EEStatementDoc.user_id == user.id,
+                                                                EEStatementDoc.status == "ok").order_by(EEStatementDoc.id)))
+            kind = event.get("kind")
+            docs = [d for d in docs if not kind or d.kind == kind]
+            if not docs:
+                return {"ok": False, "error": "no statements read"}
+            doc = docs[min(int(event.get("index", 0)), len(docs) - 1)]
+            lines = [ln.rstrip() for ln in doc.body.splitlines() if ln.strip()]
+            start, count = int(event.get("start", 0)), int(event.get("count", 120))
+            taken = {r["line_no"] for r in reader.parse_lines(doc.body)}
+            numbered = [n for n, ln in enumerate(doc.body.splitlines()) if ln.strip()]
+            return {"ok": True, "kind": doc.kind, "period": doc.period, "total_lines": len(lines),
+                    "lines_found": doc.lines_found,
+                    "shape": [("* " if numbered[i] in taken else "  ") + s for i, s in
+                              enumerate(reader.shape(doc.body, max_lines=10_000))][start:start + count]}
         return {"ok": False, "error": "unknown action"}
     finally:
         db.close()
