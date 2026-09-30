@@ -262,3 +262,49 @@ button.gsi:disabled { opacity: 0.5; }
 .chart-grid h2 { margin-top: 0.5rem; }
 .wrap-first td:first-child { white-space: normal; min-width: 7rem; }
 @media (max-width: 600px) { .spark { width: 72px; height: 26px; } }
+
+/* Phones: rows become cards (see stackTables in ui.js). */
+@media (max-width: 640px) {
+  .table-wrap { overflow-x: visible; }
+  table.stack thead { display: none; }
+  table.stack, table.stack tbody, table.stack tr { display: block; width: 100%; }
+  /* each row is its own card; the box around the table steps aside */
+  .card.table-wrap:has(table.stack) { background: transparent; border: 0; padding: 0; }
+  table.stack tr {
+    position: relative; margin-bottom: 0.6rem; padding: 0.75rem 2.2rem 0.75rem 0.9rem;
+    background: linear-gradient(135deg, rgba(52, 168, 110, 0.10), transparent 45%), var(--panel);
+    border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 12px;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  }
+  /* closed: title + key numbers; open: everything, lifted */
+  table.stack tr.expandable { cursor: pointer; }
+  table.stack tr.expandable td:not(:first-child):not([data-key]) { display: none; }
+  table.stack tr.expandable.open td:not(:first-child):not(.is-empty) { display: flex; }
+  table.stack td.is-empty { display: none !important; }
+  table.stack tr.expandable::after {
+    content: ""; position: absolute; right: 0.95rem; top: 1.05rem; width: 0.5rem; height: 0.5rem;
+    border-right: 2px solid var(--accent); border-bottom: 2px solid var(--accent);
+    transform: rotate(45deg); transition: transform 0.18s ease;
+  }
+  table.stack tr.expandable.open::after { transform: rotate(-135deg); top: 1.3rem; }
+  table.stack tr.expandable.open {
+    transform: translateY(-2px); border-color: var(--accent);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(52, 168, 110, 0.25);
+  }
+  table.stack tr.expandable.open td[data-key] { font-weight: 600; }
+  table.stack td {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 1rem;
+    padding: 0.18rem 0; border: 0; text-align: right; white-space: normal;
+  }
+  table.stack td::before { content: attr(data-label); color: var(--muted); font-size: 0.8rem; text-align: left; flex: none; }
+  table.stack td[data-label=""]::before { content: none; }
+  table.stack td[data-label=""] { justify-content: flex-end; }
+  /* first cell is the row's title */
+  table.stack td:first-child { display: block; text-align: left; font-size: 1rem; padding-bottom: 0.35rem; }
+  table.stack td:first-child::before { content: none; }
+  table.stack td[colspan] { display: block; text-align: left; }
+  table.stack td[colspan]::before { content: none; }
+  table.stack td .row { justify-content: flex-end; }
+  table.stack td .bar { width: 100%; }
+  tbody tr:hover td { background: transparent; }
+}

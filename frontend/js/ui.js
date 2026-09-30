@@ -105,6 +105,49 @@ export function page(links = []) {
   document.addEventListener("click", (e) => { if (!e.target.closest(".group")) closeGroups(); });
   $$(".links a", nav).forEach((a) => a.addEventListener("click", () => { setOpen(false); closeGroups(); }));
   $("#logout").addEventListener("click", () => { tokens.clear(); location.href = "/login.html"; });
+  stackTables();
+}
+
+// Phones: tables with a header turn each row into a small card (first cell = title, the rest "label: value"),
+// so nothing needs sideways scrolling. Labels come from the header and are re-applied whenever rows change.
+// The (at most two) columns a closed card shows next to its title, most important first.
+const KEY_COLUMNS = ["Now", "Value", "Worth now", "Amount", "Type", "What", "Gain", "Last year", "Price", "Equity", "Dividends", "Fees"];
+
+function labelTable(table) {
+  const heads = [...table.querySelectorAll("thead th")].map((th) => th.textContent.trim());
+  if (!heads.length) return;
+  table.classList.add("stack");
+  const keys = KEY_COLUMNS.filter((k) => heads.includes(k)).slice(0, 2);
+  table.querySelectorAll("tbody tr").forEach((tr) => {
+    let col = 0;
+    [...tr.children].forEach((td) => {
+      const label = heads[col] || "";
+      if (td.dataset.label !== label) td.dataset.label = label;
+      td.toggleAttribute("data-key", keys.includes(label));
+      td.classList.toggle("is-empty", !td.textContent.trim() && !td.querySelector("svg, button, input, img"));
+      col += td.colSpan || 1;
+    });
+    tr.classList.toggle("expandable", tr.children.length > 1 && !tr.querySelector("td[colspan]"));
+  });
+}
+
+// Tap a card (phones) to open it; buttons and links inside keep working as normal.
+document.addEventListener("click", (e) => {
+  const tr = e.target.closest("table.stack tr.expandable");
+  if (!tr || e.target.closest("button, a, input, select, textarea, label")) return;
+  if (!window.matchMedia("(max-width: 640px)").matches) return;
+  tr.classList.toggle("open");
+});
+
+export function stackTables(root = document.querySelector("main")) {
+  if (!root) return;
+  root.querySelectorAll("table").forEach(labelTable);
+  let queued = false;
+  new MutationObserver(() => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => { queued = false; root.querySelectorAll("table").forEach(labelTable); });
+  }).observe(root, { childList: true, subtree: true });
 }
 
 export function setActive(id) {
