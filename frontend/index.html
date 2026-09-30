@@ -397,7 +397,7 @@
       <div class="grid" id="bank-kpis"></div>
       <div class="reader-bar">
         <div><strong>Bank statements from Gmail</strong><br><small class="muted" id="bank-note"></small></div>
-        <button id="bank-read" class="small">Read bank statements</button>
+        <div class="row"><button id="bank-read" class="small">Read bank statements</button><button id="bank-tidy" class="secondary small">Tidy categories</button></div>
       </div>
 
       <div class="chart-grid" id="bank-charts" hidden>
@@ -1245,7 +1245,7 @@
       const rows = bankRows.filter(t => (!cat || t.category === cat) && (!acc || t.account === acc) &&
         (!q || `${t.description} ${t.category} ${t.account} ${t.amount}`.toLowerCase().includes(q)));
       $("#bank-rows").innerHTML = rows.slice(0, 1500).map(t => `<tr><td>${t.date}</td>
-        <td>${esc(t.description)} ${badge(t.category, t.category === "Bank fees" ? "warn" : "")}</td><td><small>${esc(t.account)}</small></td>
+        <td>${esc(t.description)} <button class="cat-edit" data-id="${t.id}" title="Change category">${badge(t.category, t.category === "Bank fees" ? "warn" : t.category.startsWith("Other") ? "muted" : "")}</button></td><td><small>${esc(t.account)}</small></td>
         <td class="num">${signed(t.amount)}</td><td class="num">${t.fee ? `<span class="neg">${money(t.fee)}</span>` : ""}</td>
         <td class="num">${t.balance != null ? money(t.balance) : ""}</td></tr>`).join("") || empty(6, "No bank transactions.");
       $("#bank-search-note").textContent = q || cat || acc ? `${rows.length} match${rows.length === 1 ? "" : "es"}` : "";
@@ -1260,6 +1260,34 @@
       document.body.appendChild(box);
       box.addEventListener("click", (e) => { if (e.target === box || e.target.closest(".modal-x")) box.remove(); });
     }
+    let catNames = null;
+    async function chooseCategory(id) {
+      catNames ||= (await api.bankCategories()).names;
+      const t = bankRows.find(x => x.id == id);
+      const box = document.createElement("div");
+      box.className = "modal";
+      box.innerHTML = `<div class="modal-card" role="dialog" aria-label="Choose a category"><div class="modal-head"><strong>${esc(t.description)}</strong>
+        <button class="secondary small modal-x">Close</button></div><p class="muted">${signed(t.amount)} on ${t.date}. C-Lab will remember this merchant and fix its other lines.</p>
+        <div class="chips">${catNames.map(n => `<button class="${n === t.category ? "" : "secondary "}small pick-cat">${esc(n)}</button>`).join("")}</div></div>`;
+      document.body.appendChild(box);
+      box.addEventListener("click", async (e) => {
+        if (e.target === box || e.target.closest(".modal-x")) return box.remove();
+        const b = e.target.closest(".pick-cat");
+        if (!b) return;
+        try {
+          const r = await api.setBankCategory(id, { category: b.textContent });
+          box.remove();
+          flash(`Now ${r.category}${r.rule ? `; remembered "${r.rule}"${r.also_changed ? `, ${r.also_changed} other line(s) updated` : ""}` : ""}.`);
+          loadBank();
+        } catch (err) { flash(err.message, "err"); }
+      });
+    }
+    $("#bank-rows").addEventListener("click", (e) => { const b = e.target.closest(".cat-edit"); if (b) chooseCategory(b.dataset.id).catch(err => flash(err.message, "err")); });
+    action($("#bank-tidy"), async () => {
+      const r = await api.bankCategorise();
+      flash(`Categories tidied: ${r.rules_and_keywords} changed by rules${r.left != null ? `, ${r.ai} named by AI, ${r.left} still Other` : " (AI not set up)"}.`);
+      loadBank();
+    });
     let bankTimer;
     $("#bank-search").addEventListener("input", () => { clearTimeout(bankTimer); bankTimer = setTimeout(renderBankRows, 150); });
     $("#bank-cat").addEventListener("change", renderBankRows);

@@ -40,24 +40,9 @@ QUERY = "has:attachment filename:pdf (statement OR statements) from:(" + " OR ".
 
 ACCOUNT_RE = re.compile(r"(?:account|acc|card)\s*(?:number|no\.?|nr\.?|#)?\s*[:.]?\s*((?:\d[\d \-*x]{5,}\d))", re.I)
 CLOSING_RE = re.compile(r"closing\s+balance[^\d\-R]{0,30}(-?R?\s?-?[\d ,]+\.\d{2})\s*(cr|dr)?", re.I)
-FEE_RE = re.compile(r"\b(fee|fees|charge|charges|admin|sms notif|service fee|monthly account)\b", re.I)
 CREDIT_CARD_RE = re.compile(r"credit\s+card|credit\s+limit|minimum\s+(amount\s+)?(payment\s+)?due", re.I)
 LOAN_RE = re.compile(r"personal\s+loan|loan\s+account|home\s+loan|vehicle\s+finance|instal+ment\s+sale", re.I)
 
-CATEGORIES = [
-    ("Income", r"salary|payroll|wages|\bpay\b.*(ltd|pty)|income"),
-    ("Transfers", r"transfer|trf|own account|goalsave|savings pocket|easyequities|investment"),
-    ("Groceries", r"checkers|pick ?n ?pay|woolworths|spar\b|shoprite|food lover|boxer|makro"),
-    ("Eating out", r"kfc|mcdonald|nando|steers|debonairs|uber ?eats|mr ?d\b|spur|wimpy|starbucks|restaurant|coffee"),
-    ("Transport", r"uber|bolt|engen|shell|sasol|caltex|bp\b|total ?energies|fuel|petrol|gautrain|toll"),
-    ("Airtime & data", r"airtime|data bundle|vodacom|mtn|cell ?c|telkom|rain\b|prepaid"),
-    ("Utilities", r"electricity|prepaid elec|eskom|city of|municipal|water|dstv|netflix|showmax|spotify|apple\.com|google"),
-    ("Insurance", r"insurance|assurance|sanlam|old mutual|discovery|momentum|outsurance|miway|funeral|hollard|liberty"),
-    ("Debt", r"loan|credit card|repayment|instalment|finance|debicheck|rcs|edgars|truworths|mr price money"),
-    ("Cash", r"atm|cash withdrawal|cash sent"),
-    ("Shopping", r"takealot|amazon|mr price|pep\b|ackermans|clicks|dis-?chem|game\b|incredible|builders|temu|shein"),
-    ("Interest", r"interest"),
-]
 KNOWN = {"Income", "Savings", "Withdrawal", "Transfer", "Payments", "Cellphone", "Investments", "Fees", "Interest"}
 
 
@@ -100,18 +85,19 @@ def account_kind(text: str) -> str:
     return "bank"
 
 
-def categorise(description: str, parsed: str = "", amount: float = 0.0) -> str:
+def categorise(description: str, parsed: str = "", amount: float = 0.0, rules=()) -> str:
+    """Your rules, then the bank's own label (Capitec prints one), then the keyword lists."""
+    from .categorize import categorise as by_keywords
+
+    low = " " + (description or "").lower() + " "
+    for keyword, category in rules:
+        if keyword and keyword in low:
+            return category
     parsed = next((w for w in reversed(parsed.split()) if w in KNOWN), "") if parsed else ""
     if parsed and parsed in KNOWN - {"Payments", "Withdrawal"}:
         return {"Transfer": "Transfers", "Investments": "Transfers", "Cellphone": "Airtime & data", "Savings": "Transfers",
                 "Fees": "Bank fees"}.get(parsed, parsed)
-    if FEE_RE.search(description):
-        return "Bank fees"
-    low = description.lower()
-    for name, pattern in CATEGORIES:
-        if re.search(pattern, low):
-            return name
-    return "Other income" if amount > 0 else "Other"
+    return by_keywords(description, amount)
 
 
 def closing_balance(text: str):
@@ -129,7 +115,7 @@ def _key(user_id, account, row):
     return hashlib.sha256(raw.encode()).hexdigest()[:64]
 
 
-def rows_from(parsed, kind):
+def rows_from(parsed, kind, rules=()):
     out = []
     for r in parsed:
         amount = r["amount"] if r["type"] == "credit" else -r["amount"]
@@ -138,7 +124,7 @@ def rows_from(parsed, kind):
         if not fee and "(fee)" in desc.lower():
             fee = abs(amount)
         out.append({"date": r["date"], "description": desc, "signed": amount, "fee": fee,
-                    "balance": r.get("balance"), "category": categorise(desc, r.get("category") or "", amount)})
+                    "balance": r.get("balance"), "category": categorise(desc, r.get("category") or "", amount, rules)})
     return out
 
 
@@ -146,7 +132,9 @@ def save(db: Session, st: BankStatement, text: str, parsed):
     """Store the statement's rows (skipping ones already stored from an overlapping statement) and update the account."""
     st.kind = account_kind(text)
     st.account = account_label(st.bank, text)
-    rows = rows_from(parsed, st.kind)
+    from .categorize import rules_for
+
+    rows = rows_from(parsed, st.kind, rules_for(db, st.user_id))
     db.query(BankTxn).filter(BankTxn.statement_id == st.id).delete()
     have = set(db.scalars(select(BankTxn.key).where(BankTxn.user_id == st.user_id)))
     seen_here = defaultdict(int)
@@ -376,9 +364,12 @@ def charts(db: Session, user_id: int, months=24):
 def read_all(db: Session):
     """Nightly: every user signed in with Google."""
     n = 0
+    from .categorize import tidy
+
     for conn in db.scalars(select(EEConnection).where(EEConnection.mail_password.startswith(gmail.PREFIX))):
         try:
             read_batch(db, conn.user_id, limit=25)
+            tidy(db, conn.user_id)
             n += 1
         except Exception:
             db.rollback()

@@ -39,7 +39,7 @@ def cohere(system: str, user: str, json_mode=False) -> str:
 _next_key = 0
 
 
-def groq(messages, max_tokens=900) -> str:
+def groq(messages, max_tokens=900, json_mode=False) -> str:
     """Chat completion; on a rate limit, the next key is tried."""
     global _next_key
     keys = settings.groq_api_keys
@@ -49,7 +49,8 @@ def groq(messages, max_tokens=900) -> str:
     for i in range(len(keys)):
         key = keys[(_next_key + i) % len(keys)]
         r = requests.post(GROQ_URL, timeout=60, headers={"Authorization": f"Bearer {key}"},
-                          json={"model": settings.groq_model, "messages": messages, "temperature": 0.4, "max_tokens": max_tokens})
+                          json={"model": settings.groq_model, "messages": messages, "temperature": 0 if json_mode else 0.4,
+                                "max_tokens": max_tokens, **({"response_format": {"type": "json_object"}} if json_mode else {})})
         if r.status_code == 429:
             last = "rate limited"
             continue

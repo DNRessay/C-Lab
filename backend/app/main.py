@@ -191,6 +191,10 @@ def admin(event):
             from .banking import reader as bank_reader
 
             return {"ok": True, **bank_reader.reparse(db, user.id, only_empty=bool(event.get("only_empty")))}
+        if event.get("action") == "tidy_bank":
+            from .banking.categorize import tidy
+
+            return {"ok": True, **tidy(db, user.id)}
         if event.get("action") == "read_bank":
             from .banking import reader as bank_reader
 

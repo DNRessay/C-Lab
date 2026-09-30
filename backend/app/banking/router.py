@@ -11,7 +11,7 @@ from ..deps import current_user, get_db
 from ..invest.ee import mail
 from ..models import User, utcnow
 from . import reader
-from .models import BankAccount, BankStatement, BankTxn, Liability
+from .models import BankAccount, BankCategoryRule, BankStatement, BankTxn, Liability
 
 router = APIRouter(prefix="/api/bank", tags=["banking"])
 
@@ -71,6 +71,57 @@ def transactions(limit: int = 3000, user: User = Depends(current_user), db: Sess
                       .order_by(BankTxn.date.desc(), BankTxn.id.desc()).limit(min(limit, 10000)))
     return [{"id": t.id, "date": t.date.isoformat(), "account": t.account, "description": t.description, "amount": t.amount,
              "fee": t.fee, "balance": t.balance, "category": t.category} for t in rows]
+
+
+@router.get("/categories")
+def category_names(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from .categorize import NAMES
+
+    rules = db.scalars(select(BankCategoryRule).where(BankCategoryRule.user_id == user.id).order_by(BankCategoryRule.keyword))
+    return {"names": NAMES, "rules": [{"id": r.id, "keyword": r.keyword, "category": r.category, "source": r.source} for r in rules]}
+
+
+@router.post("/categorise")
+def categorise_now(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from .categorize import tidy
+
+    return tidy(db, user.id)
+
+
+class TxnPatch(BaseModel):
+    category: str
+    remember: bool = True
+
+
+@router.patch("/transactions/{tid}")
+def set_category(tid: int, body: TxnPatch, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Change one line's category; by default C-Lab remembers the merchant and fixes its other lines too."""
+    from .categorize import NAMES, learn, merchant_key, recategorise
+
+    t = db.get(BankTxn, tid)
+    if not t or t.user_id != user.id:
+        raise HTTPException(404, "Not found.")
+    if body.category not in NAMES:
+        raise HTTPException(400, "Unknown category.")
+    t.category = body.category
+    key = merchant_key(t.description) if body.remember else ""
+    if key:
+        learn(db, user.id, key, body.category, "you")
+    db.commit()
+    changed = recategorise(db, user.id) if key else 0
+    return {"id": t.id, "category": t.category, "rule": key or None, "also_changed": changed}
+
+
+@router.delete("/rules/{rid}", status_code=204)
+def delete_rule(rid: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from .categorize import recategorise
+
+    r = db.get(BankCategoryRule, rid)
+    if not r or r.user_id != user.id:
+        raise HTTPException(404, "Not found.")
+    db.delete(r)
+    db.commit()
+    recategorise(db, user.id)
 
 
 @router.get("/statements")

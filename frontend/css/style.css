@@ -386,3 +386,5 @@ tr.dim td { opacity: 0.6; }
 .msg.assistant { align-self: flex-start; background: var(--panel-2); border: 1px solid var(--line); }
 .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.6rem; }
 .chat-form textarea { width: 100%; resize: vertical; margin-bottom: 0.5rem; }
+.cat-edit { background: none; border: 0; padding: 0; cursor: pointer; }
+.cat-edit:hover .badge { outline: 1px solid var(--accent); }

@@ -81,3 +81,16 @@ class Liability(Base):
     monthly: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     notes: Mapped[str] = text()
     updated_at: Mapped[datetime] = created()
+
+
+class BankCategoryRule(Base):
+    """'checkers' -> Groceries. From your own fixes ('you') or confident AI answers ('ai'); yours always win."""
+
+    __tablename__ = "bank_category_rules"
+    __table_args__ = (UniqueConstraint("user_id", "keyword"),)
+    id: Mapped[int] = pk()
+    user_id: Mapped[int] = user_fk()
+    keyword: Mapped[str] = text(80)
+    category: Mapped[str] = text(40)
+    source: Mapped[str] = text(10)  # you | ai
+    created_at: Mapped[datetime] = created()

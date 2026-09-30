@@ -1,3 +1,4 @@
+import json
 import io
 from datetime import date
 
@@ -131,3 +132,37 @@ def test_parser_fallback_when_bank_parser_finds_nothing():
     rows, text = parsers.parse_pdf(pdf, "tymebank")
     assert [(r["type"], r["amount"]) for r in rows] == [("debit", 99.9), ("credit", 5000.0)]
     assert parsers.parse_text("Transaction History\n01/09/2025 Payment Received J Smith Other Income 1,500.00 2,500.00", "fnb")[0]["amount"] == 1500.0
+
+
+def test_categoriser_rules_and_ai(monkeypatch):
+    from app.ai import llm
+    from app.banking import categorize as c
+    from app.config import settings
+
+    assert c.categorise("POS Purchase Checkers Sandton", -100) == "Groceries"
+    assert c.categorise("BP Garage Rivonia", -500) == "Transport"
+    assert c.categorise("BPAY something", -5) == "Other"  # whole words only
+    assert c.categorise("Salary ACME", 20000) == "Income"
+    assert c.categorise("Monthly Account Admin Fee", -7.5) == "Bank fees"
+    assert c.categorise("Kwik Spar", -40, rules=[(" kwik ", "Eating out")]) == "Eating out"
+    assert c.merchant_key("POS Purchase Kauai Rosebank 1234") == "kauai rosebank"
+
+    h = register("banker")
+    db = SessionLocal()
+    uid = db.query(User).filter(User.email == "banker@inv.example.com").one().id
+    rows = api.get("/api/bank/transactions", headers=h).json()
+    uber = next(t for t in rows if "Uber" in t["description"])
+    r = api.patch(f"/api/bank/transactions/{uber['id']}", headers=h, json={"category": "Eating out"}).json()
+    assert r["rule"] == "uber trip" and r["category"] == "Eating out"
+    assert api.patch(f"/api/bank/transactions/{uber['id']}", headers=h, json={"category": "Nope"}).status_code == 400
+    cats = api.get("/api/bank/categories", headers=h).json()
+    assert {"keyword": "uber trip", "category": "Eating out", "source": "you"}.items() <= cats["rules"][0].items()
+
+    # Groq names the leftovers; confident answers stick and teach a rule.
+    monkeypatch.setattr(settings, "groq_api_keys", ["g"])
+    other = [t for t in api.get("/api/bank/transactions", headers=h).json() if t["category"] in ("Other", "Other income")]
+    monkeypatch.setattr(llm, "groq", lambda messages, max_tokens=900, json_mode=False: json.dumps(
+        {"results": [{"i": i, "category": "Income", "confidence": 0.9, "keyword": "acme"} for i in range(len(other))]}))
+    out = api.post("/api/bank/categorise", headers=h).json()
+    assert out["ai"] == len(other) and out["left"] == 0
+    db.close()
