@@ -121,7 +121,7 @@
         <thead><tr><th>Holding</th><th class="num">Units</th><th class="num">Avg cost</th><th class="num">Price</th><th class="num">Value</th><th class="num">Gain</th><th class="num">Dividends</th><th></th></tr></thead>
         <tbody id="holding-rows"></tbody>
       </table></div>
-      <p class="muted">EasyEquities holdings use the price from your last EasyEquities sync. Anything else without a market price? Use "Set price".</p>
+      <p class="muted">EasyEquities holdings use the price from your last EasyEquities sync. EasyProperties is on the Property page. Anything else without a market price? Use "Set price".</p>
     </section>
 
     <!-- Transactions -->
@@ -366,7 +366,9 @@
       $("#alloc").innerHTML = Object.entries(s.allocation).map(([k, v]) => `<tr><td>${CLASS[k] || esc(k)}<div class="bar"><span style="width:${v / total * 100}%"></span></div></td>
         <td class="num">${money(v)}</td><td class="num">${(v / total * 100).toFixed(0)}%</td></tr>`).join("") || empty(3, "No holdings yet.");
 
-      $("#holding-rows").innerHTML = s.holdings.map(h => `<tr>
+      // Holdings = EasyEquities shares, ETFs etc.; EasyProperties lives on the Property page.
+      const shares = s.holdings.filter(h => h.asset_class !== "easyproperties");
+      $("#holding-rows").innerHTML = shares.map(h => `<tr>
         <td><strong>${esc(h.symbol)}</strong><br><small class="muted">${esc(h.name)} · ${CLASS[h.asset_class] || esc(h.asset_class)}${h.account ? ` · ${esc(h.account)}` : ""}</small></td>
         <td class="num">${units(h.quantity)}</td><td class="num">${money(h.avg_cost)}</td>
         <td class="num">${money(h.price)}<br><small class="muted">${esc(h.price_source)}</small></td>
@@ -696,7 +698,7 @@
     }
 
     function renderHoldingCharts(s) {
-      const rows = s.holdings.filter(h => h.value > 0);
+      const rows = s.holdings.filter(h => h.value > 0 && h.asset_class !== "easyproperties");
       $("#holding-charts").hidden = !rows.length;
       if (!rows.length) return;
       const top = [...rows].sort((a, b) => b.value - a.value).slice(0, 12);
