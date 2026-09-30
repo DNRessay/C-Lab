@@ -1,4 +1,5 @@
 import logging
+import re
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -107,7 +108,10 @@ def admin(event):
             start, count = int(event.get("start", 0)), int(event.get("count", 120))
             taken = {r["line_no"] for r in reader.parse_lines(doc.body)}
             numbered = [n for n, ln in enumerate(doc.body.splitlines()) if ln.strip()]
-            return {"ok": True, "kind": doc.kind, "period": doc.period, "total_lines": len(lines),
+            # Table column titles only: lines with no digits, no @ or dots (no emails/urls) and 3+ spaced columns.
+            headers = [re.sub(r"\s{2,}", " | ", ln.strip()) for ln in lines
+                       if not re.search(r"[\d@.]", ln) and len(re.split(r"\s{3,}", ln.strip())) >= 3]
+            return {"ok": True, "kind": doc.kind, "period": doc.period, "total_lines": len(lines), "headers": headers,
                     "lines_found": doc.lines_found,
                     "shape": [("* " if numbered[i] in taken else "  ") + s for i, s in
                               enumerate(reader.shape(doc.body, max_lines=10_000))][start:start + count]}
