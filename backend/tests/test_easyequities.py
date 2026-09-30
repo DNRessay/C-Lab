@@ -225,6 +225,7 @@ def test_easyproperties_login_and_holdings():
     idp = FakeIdpSession()
     ep = REAL_EP_FETCH("me", "pw", session=idp)
     assert idp.sent["login"]["Username"] == "me" and idp.sent["login"]["__RequestVerificationToken"] == "csrf"
+    assert idp.sent["login"]["button"] == "login"  # otherwise EasyID answers access_denied
     assert idp.sent["token"]["authorizationCode"] == "abc" and idp.sent["token"]["codeVerifier"]
     edge, four = ep["holdings"]
     assert (edge["name"], edge["shares"], edge["contract_code"]) == ("The Edge", 87.2068, "EQU.ZA.PROP9")

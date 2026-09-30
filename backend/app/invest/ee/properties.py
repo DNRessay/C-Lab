@@ -40,7 +40,8 @@ def login(username, password, session=None):
     if not form:
         raise PlatformError("easyproperties login page", "no login form found", r.text)
     data = {i.get("name"): i.get("value", "") for i in form.find_all("input") if i.get("name")}
-    data.update({"Username": username, "Password": password, "IsUsernameProvided": "true"})
+    # "button=login" is what the Login button submits; without it EasyID treats the form as cancelled (access_denied).
+    data.update({"Username": username, "Password": password, "IsUsernameProvided": "true", "button": "login"})
     page_url = str(getattr(r, "url", "") or f"{IDP}/Account/Login")
     action = urljoin(page_url, form.get("action") or page_url)
 
