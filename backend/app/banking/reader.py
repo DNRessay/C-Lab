@@ -273,21 +273,41 @@ def read_batch(db: Session, user_id: int, limit=15):
     return {"ok": True, "found": len(ids), "read_now": read_now, "rows_now": rows_now, "left": left}
 
 
-def reparse(db: Session, user_id: int):
+def reparse(db: Session, user_id: int, only_empty=False):
+    """Re-run the text parsers over stored statements (GoTyme's positional rows are kept unless none were found)."""
     n = 0
     for st in db.scalars(select(BankStatement).where(BankStatement.user_id == user_id, BankStatement.status == "ok")):
-        text = st.body
-        if st.bank == "gotyme":
-            continue  # GoTyme needs the PDF's word positions; its rows stay as first read
-        from .parsers.capitec import CapitecParser
-        from .parsers.generic import GenericParser
-        from .parsers.tymebank import TymeBankLegacyParser
-
-        parser = {"capitec": CapitecParser, "tymebank": TymeBankLegacyParser}.get(st.bank, GenericParser)()
-        save(db, st, text, parser.parse(text))
+        if (only_empty and st.rows) or (st.bank == "gotyme" and st.rows):
+            continue
+        save(db, st, st.body, parsers.parse_text(st.body, st.bank))
         n += 1
     db.commit()
-    return {"reparsed": n}
+    return {"reparsed": n, **{k: v for k, v in status(db, user_id).items() if k != "last_read"}}
+
+
+def shape(db: Session, user_id: int, index=0, start=0, count=120):
+    """Layout of one stored statement (letters -> a, digits -> 9) and counts per bank, to tune the parsers."""
+    from ..invest.ee.reader import shape as mask
+
+    rows = list(db.scalars(select(BankStatement).where(BankStatement.user_id == user_id).order_by(BankStatement.id)))
+    per_bank = defaultdict(lambda: {"statements": 0, "empty": 0, "locked": 0, "error": 0})
+    for st in rows:
+        c = per_bank[st.bank]
+        c["statements"] += 1
+        c["empty"] += st.status == "ok" and not st.rows
+        c["locked"] += st.status == "locked"
+        c["error"] += st.status == "error"
+    ok = [st for st in rows if st.status == "ok"]
+    if not ok:
+        return {"per_bank": per_bank, "errors": list({st.error for st in rows if st.error})[:5]}
+    st = ok[min(index, len(ok) - 1)]
+    lines = mask(st.body, max_lines=10_000)
+    return {"per_bank": per_bank, "bank": st.bank, "kind": st.kind, "rows": st.rows, "total_lines": len(lines),
+            "headers": [re.sub(r"\s{2,}", " | ", ln.strip()) for ln in st.body.splitlines()
+                        if not re.search(r"[\d@]", ln) and re.search(r"\b(date|description|details|amount|balance|fees?|"
+                                                                     r"money|debit|credit|transaction|reference|in|out)\b", ln, re.I)
+                        and len(ln.split()) <= 10][:40],
+            "shape": lines[start:start + count]}
 
 
 def position(db: Session, user_id: int):

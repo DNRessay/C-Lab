@@ -142,6 +142,15 @@ def admin(event):
             return {"ok": True, "links": links[:40], "url": url, "title": title, "published": str(published),
                     "lines": lines[start:start + count], "total_lines": len(lines),
                     "parsed": [{**i, "ldt": str(i["ldt"]), "pay_date": str(i["pay_date"])} for i in blog.parse_dividends(lines)][:30]}
+        if event.get("action") == "bank_shape":
+            from .banking import reader as bank_reader
+
+            return {"ok": True, **bank_reader.shape(db, user.id, int(event.get("index", 0)), int(event.get("start", 0)),
+                                                    int(event.get("count", 120)))}
+        if event.get("action") == "reparse_bank":
+            from .banking import reader as bank_reader
+
+            return {"ok": True, **bank_reader.reparse(db, user.id, only_empty=bool(event.get("only_empty")))}
         if event.get("action") == "read_bank":
             from .banking import reader as bank_reader
 

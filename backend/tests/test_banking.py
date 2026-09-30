@@ -110,3 +110,15 @@ def test_bank_helpers():
     assert reader.categorise("POS Purchase Engen Garage") == "Transport"
     assert reader.categorise("Unknown thing", amount=50) == "Other income"
     assert date(2026, 1, 1)
+
+
+def test_parser_fallback_when_bank_parser_finds_nothing():
+    from app.banking import parsers
+
+    # A TymeBank statement mentions GoalSave, which looks like GoTyme; the GoTyme parser finds no rows,
+    # so the text parsers get a go and TymeBank's wins.
+    pdf = capitec_pdf(["TymeBank GoalSave", "05 Sep 2025 Woolworths Food", "- 99.90 - 400.10",
+                       "06 Sep 2025 Salary", "- - 5,000.00 5,400.10"])
+    rows, text = parsers.parse_pdf(pdf, "tymebank")
+    assert [(r["type"], r["amount"]) for r in rows] == [("debit", 99.9), ("credit", 5000.0)]
+    assert parsers.parse_text("Transaction History\n01/09/2025 Payment Received J Smith Other Income 1,500.00 2,500.00", "fnb")[0]["amount"] == 1500.0

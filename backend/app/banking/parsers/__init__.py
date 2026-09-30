@@ -34,13 +34,28 @@ def extract_text(pdf_bytes, passwords=()):
     return "\n".join(page.extract_text() or "" for page in reader.pages), pw
 
 
+TEXT_PARSERS = {"tymebank": TymeBankLegacyParser, "capitec": CapitecParser, "generic": GenericParser}
+
+
+def parse_text(text, bank_name):
+    """The bank's own parser first; when it finds nothing, whichever other text parser finds the most."""
+    first = TEXT_PARSERS.get(bank_name, GenericParser)().parse(text)
+    if first:
+        return first
+    best = []
+    for name, parser in TEXT_PARSERS.items():
+        if name != bank_name:
+            rows = parser().parse(text)
+            if len(rows) > len(best):
+                best = rows
+    return best
+
+
 def parse_pdf(pdf_bytes, bank_name, passwords=()):
     """(rows, text)."""
     text, pw = extract_text(pdf_bytes, passwords)
     if bank_name == "gotyme" or is_gotyme(text):
-        return GoTymeParser().parse(pdf_bytes, pw), text
-    if bank_name == "tymebank":
-        return TymeBankLegacyParser().parse(text), text
-    if bank_name == "capitec":
-        return CapitecParser().parse(text), text
-    return GenericParser().parse(text), text
+        rows = GoTymeParser().parse(pdf_bytes, pw)
+        if rows:
+            return rows, text
+    return parse_text(text, bank_name), text
