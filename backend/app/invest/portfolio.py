@@ -227,7 +227,7 @@ def statement_income(db: Session, statement):
         if r["category"] in ("dividend", "interest", "fee", "tax") and r["amount"] is not None:
             rate = rand_rate(db, r["currency"]) or 0.0
             totals[r["category"]] += abs(r["amount"]) * rate
-    return {k: round(totals[k], 2) for k in ("dividend", "interest", "fee", "tax")} if statement else None
+    return {k: round(totals[k], 5) for k in ("dividend", "interest", "fee", "tax")} if statement else None
 
 
 def property_view(p: PropertyAsset):

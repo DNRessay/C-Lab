@@ -7,7 +7,10 @@ export const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&a
 
 const fmt = new Intl.NumberFormat("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 export const pct = (v, dp = 1) => (v === null || v === undefined ? "—" : `${v > 0 ? "+" : ""}${(v * 100).toFixed(dp)}%`);
-export const money = (v) => (v === null || v === undefined || v === "" ? "" : `${Number(v) < 0 ? "-" : ""}R ${fmt.format(Math.abs(Number(v)))}`);
+const fine = new Intl.NumberFormat("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 5 });
+// Amounts under R1 (fractional-share dividends) keep up to 5 decimals so they don't show as R 0.00.
+export const amount = (v) => (Math.abs(Number(v)) < 1 && Number(v) !== 0 ? fine : fmt).format(Math.abs(Number(v)));
+export const money = (v) => (v === null || v === undefined || v === "" ? "" : `${Number(v) < 0 ? "-" : ""}R ${amount(v)}`);
 export const day = (v) => (v ? String(v).slice(0, 10) : "");
 
 export const badge = (text, kind = "") => `<span class="badge ${kind}">${esc(text)}</span>`;

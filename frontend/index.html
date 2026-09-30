@@ -239,7 +239,7 @@
   </main>
   <script type="module">
     import { api } from "/js/api.js";
-    import { $, $$, action, badge, day, download, empty, esc, flash, money, onSubmit, page, pct, setActive } from "/js/ui.js";
+    import { $, $$, action, amount, badge, day, download, empty, esc, flash, money, onSubmit, page, pct, setActive } from "/js/ui.js";
 
     const PAGES = [["markets", "Markets"], ["overview", "Portfolio"], ["easyequities", "EasyEquities"], ["holdings", "Holdings"],
       ["transactions", "Transactions"], ["watchlist", "Watchlist"], ["property", "Property"], ["account", "Account"]];
@@ -436,7 +436,7 @@
       corporate_action: ["Corporate action", "warn"], bundle: ["Bundle", ""], notice: ["Notice", ""] };
     const CAT = { dividend: ["Dividend", "ok"], interest: ["Interest", "ok"], fee: ["Fee", "err"], tax: ["Tax", "err"], deposit: ["Deposit", ""],
       withdrawal: ["Withdrawal", ""], trade: ["Trade", ""], transfer: ["Transfer", ""], other: ["Other", "warn"] };
-    const cur = (v, c) => v == null ? "" : c && c !== "ZAR" ? `${Number(v) < 0 ? "-" : ""}${c === "USD" ? "$" : c === "GBP" ? "£" : c + " "}${Math.abs(Number(v)).toFixed(2)}` : money(v);
+    const cur = (v, c) => v == null ? "" : c && c !== "ZAR" ? `${Number(v) < 0 ? "-" : ""}${c === "USD" ? "$" : c === "GBP" ? "£" : c + " "}${amount(v)}` : money(v);
     const ago = (iso) => iso ? new Date(iso + "Z").toLocaleString("en-ZA", { dateStyle: "medium", timeStyle: "short" }) : "never";
 
     function renderEE(e) {

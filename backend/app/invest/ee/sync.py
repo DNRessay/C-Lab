@@ -152,7 +152,7 @@ def statement_totals(rows):
             continue
         key = (r["account"], (r["date"] or "")[:4])
         t = out.setdefault(key, {"account": r["account"], "year": key[1], "currency": r["currency"]})
-        t[r["category"]] = round(t.get(r["category"], 0.0) + r["amount"], 2)
+        t[r["category"]] = round(t.get(r["category"], 0.0) + r["amount"], 5)  # tiny dividends are fractions of a cent
     return sorted(out.values(), key=lambda t: (t["year"], t["account"] or ""), reverse=True)
 
 
