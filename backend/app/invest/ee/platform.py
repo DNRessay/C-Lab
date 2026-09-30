@@ -141,6 +141,22 @@ def discover(page):
     return sorted(p for p in paths if not re.search(r"\.(png|jpg|svg|css|ico|woff2?)$", p))[:60]
 
 
+def _redact(text):
+    return re.sub(r"[A-Za-z0-9_\-]{24,}", "…", text or "")
+
+
+def forms(page):
+    """Form actions, methods and input names (never values), to learn how a site's sign-in or statement works."""
+    soup = BeautifulSoup(page or "", "html.parser")
+    out = []
+    for f in soup.find_all("form")[:5]:
+        out.append({"action": _redact(f.get("action", "")), "method": f.get("method", ""),
+                    "inputs": [i.get("name") or i.get("id") or i.get("type") for i in f.find_all(["input", "select", "button"])][:20]})
+    title = soup.title.get_text(strip=True) if soup.title else ""
+    return {"title": title[:80], "forms": out, "links": [_redact(x) for x in discover(page or "")][:40],
+            "scripts": [_redact(sc.get("src", "")) for sc in soup.find_all("script") if sc.get("src")][:15]}
+
+
 def statement_links(page):
     """Paths on the overview page that look like statements/reports (to learn where printable statements live)."""
     found = set(re.findall(r"""(?:href|action|data-[\w-]*url)=["']([^"']*(?:[Ss]tatement|[Rr]eport|[Tt]ax[Cc]ert)[^"']*)["']""", page))
@@ -203,6 +219,18 @@ class Platform:
         if r.status_code != 200:
             raise PlatformError("switch account", f"HTTP {r.status_code}", r.text)
         self.current = account_id
+
+    def switch_debug(self, account_id):
+        """What EasyEquities answers when asked to use this account (EasyProperties seems to need something else)."""
+        out = {}
+        for name, path in (("can_use", "/Menu/CanUseSelectedAccount"), ("switch", SWITCH_ACCOUNT)):
+            try:
+                r = self.s.post(self._url(path), data={"trustAccountId": account_id}, timeout=30, allow_redirects=False)
+                out[name] = {"status": r.status_code, "location": _redact(r.headers.get("location", "")),
+                             "body": _redact(r.text[:300])}
+            except Exception as e:
+                out[name] = {"error": str(e)[:200]}
+        return out
 
     def valuations(self, account_id):
         self.switch(account_id)
@@ -271,6 +299,8 @@ def snapshot(username, password, base_url=BASE_URL, client=None, ep_client=None)
         item = {**acc, "holdings": [], "valuation": None, "transactions": [], "warnings": []}
         item["holdings"] = p.holdings(acc["id"])
         names = sorted(h["name"] for h in item["holdings"])
+        if names and names == previous or "properties" in acc["name"].lower():
+            item["switch_debug"] = p.switch_debug(acc["id"])
         if names and names == previous:
             # EasyEquities kept showing the previous account (seen with EasyProperties); don't copy its holdings.
             item["holdings"] = []
@@ -287,10 +317,16 @@ def snapshot(username, password, base_url=BASE_URL, client=None, ep_client=None)
         item["purchase_value"] = sum(h["purchase_value"] or 0 for h in item["holdings"])
         out.append(item)
     snap = {"accounts": out, "statement_links": p.statement_links}
+    if p.statement_links:
+        try:
+            r = p.s.get(p._url(p.statement_links[0]), timeout=30)
+            snap["statement_page"] = {"status": r.status_code, **forms(r.text)}
+        except Exception as e:
+            snap["statement_page"] = {"error": str(e)[:200]}
     try:
         ep = easyproperties(username, password, client=ep_client)
     except PlatformError as e:
-        ep = {"holdings": [], "error": str(e), "discovery": discover(e.page) if e.page else []}
+        ep = {"holdings": [], "error": str(e), "page": forms(e.page) if e.page else {}}
     snap["easyproperties"] = {k: v for k, v in ep.items() if k != "holdings"}
     if ep["holdings"]:
         wallet = next((a for a in out if "properties" in a["name"].lower()), None)

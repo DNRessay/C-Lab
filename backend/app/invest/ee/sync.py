@@ -79,6 +79,9 @@ def sync_platform(db: Session, conn: EEConnection, client=None, ep_client=None):
                  [(a.get("name"), len(a.get("holdings", [])), a.get("warnings", [])) for a in snap["accounts"]])
         log.info("EasyEquities statement links: %s", snap.get("statement_links"))
         log.info("EasyProperties: %s", snap.get("easyproperties"))
+        log.info("EasyEquities statement page: %s", snap.get("statement_page"))
+        log.info("EasyEquities account switch: %s",
+                 {a.get("name"): a.get("switch_debug") for a in snap["accounts"] if a.get("switch_debug")})
     db.commit()
     return conn.platform_status == "ok"
 
