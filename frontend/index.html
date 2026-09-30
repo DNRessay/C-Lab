@@ -72,6 +72,11 @@
           <thead><tr><th>What</th><th class="num">Dividend</th><th class="num">Price (1 unit)</th><th class="num">Yield</th><th>Last day to trade</th><th>Paid</th><th>Status</th></tr></thead>
           <tbody id="blog-rows"></tbody>
         </table></div>
+        <details class="section" id="blog-paid-wrap" hidden><summary><span>Already paid</span><span class="count" id="cnt-blog-paid"></span></summary>
+          <div class="card table-wrap"><table>
+            <thead><tr><th>What</th><th class="num">Dividend</th><th class="num">Price (1 unit)</th><th class="num">Yield</th><th>Last day to trade</th><th>Paid</th><th>Status</th></tr></thead>
+            <tbody id="blog-paid-rows"></tbody>
+          </table></div></details>
         <details class="section" id="blog-posts-wrap"><summary><span>Latest from EasyEquities</span><span class="count" id="cnt-blog"></span></summary>
           <div class="grid" id="blog-posts"></div></details>
       </div>
@@ -1246,22 +1251,30 @@
       return [...rows].sort(by);
     }
     let blogData = null;
-    function renderBlogRows() {
-      const how = $("#blog-sort").value, rows = sortDivs(blogData?.upcoming || [], how).slice(0, 80);
+    function blogRowsHtml(rows, how, emptyText) {
       let lastSeason = "";
-      $("#blog-rows").innerHTML = rows.map(d => {
+      return rows.map(d => {
         const head = how === "season" && d.season !== lastSeason ? `<tr class="group-row"><td colspan="7"><strong>${esc(d.season || "Unknown")}</strong></td></tr>` : "";
         lastSeason = d.season;
         return `${head}<tr class="${d.state === "paid" ? "dim" : ""}"><td>${esc(d.instrument)}<br><small class="muted">${esc(d.account)} account${d.ticker ? ` · ${esc(d.ticker)}` : ""}${d.mine ? " · " + MINE[d.mine][0] : ""}${d.pays_in?.length ? ` · pays ${d.pays_in.join(", ")}` : ""}</small></td>
         <td class="num">${divAmt(d)}</td><td class="num">${priceCell(d)}</td><td class="num">${yieldCell(d)}</td>
         <td>${dayOr(d.ldt)}</td><td>${dayOr(d.pay_date)}</td><td>${badge(...STATE[d.state])}</td></tr>`;
-      }).join("") || empty(7, "No dividends in the latest posts yet. The blog is checked every night.");
+      }).join("") || empty(7, emptyText);
+    }
+    function renderBlogRows() {
+      const how = $("#blog-sort").value, all = sortDivs(blogData?.upcoming || [], how);
+      const active = all.filter(d => d.state !== "paid"), paid = all.filter(d => d.state === "paid");
+      $("#blog-rows").innerHTML = blogRowsHtml(active.slice(0, 80), how,
+        paid.length ? "Nothing open or being paid right now; the latest ones are under Already paid." : "No dividends in the latest posts yet. The blog is checked every night.");
+      $("#blog-paid-wrap").hidden = !paid.length;
+      $("#cnt-blog-paid").textContent = paid.length;
+      $("#blog-paid-rows").innerHTML = blogRowsHtml(paid.slice(0, 80), how, "");
     }
     $("#blog-sort").addEventListener("change", renderBlogRows);
     function renderBlog(b) {
       $("#blog-wrap").hidden = !(b && (b.upcoming.length || b.posts.length));
       if (!b) return;
-      const mine = b.upcoming.filter(d => d.mine);
+      const mine = b.upcoming.filter(d => d.mine && d.state !== "paid");
       $("#blog-mine").innerHTML = mine.map(d => `<div class="card stat"><div class="value">${d.estimate != null ? money(d.estimate) : divAmt(d)}</div>
         <div class="label"><strong>${esc(d.instrument)}</strong> ${badge(...MINE[d.mine])}<br>${d.estimate != null ? `${units(d.units)} × ${divAmt(d)} · ` : ""}${d.state === "open" ? `buy by ${dayOr(d.ldt)}` : d.state === "paying" ? `paid ${dayOr(d.pay_date)}` : `paid on ${dayOr(d.pay_date)}`}</div></div>`).join("");
       const open = b.upcoming.filter(d => d.state === "open").length;
@@ -1272,7 +1285,6 @@
       $("#blog-posts").innerHTML = b.posts.map(p => `<a class="card" href="${esc(p.url)}" target="_blank" rel="noopener">
         <strong>${esc(p.title)}</strong><br><small class="muted">${dayOr(p.published)}${p.items ? ` · ${p.items} dividends` : ""}</small>
         ${p.summary ? `<ul class="muted blog-points">${p.summary.split("\n").slice(0, 5).map(l => `<li>${esc(l.length > 200 ? l.slice(0, 199) + "…" : l)}</li>`).join("")}</ul>` : ""}</a>`).join("");
-      $("#blog-posts-wrap").open = b.posts.length > 0;
     }
     async function loadPicks() {
       const b = await api.blog();
