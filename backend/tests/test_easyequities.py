@@ -354,6 +354,8 @@ def test_connect_sync_and_portfolio(market):
     assert s["history"][-1]["value"] == pytest.approx(s["value"], abs=0.01) and len(s["history"]) == 1
     # The Edge bought by email is the same holding as the EasyProperties card, so it's counted once.
     assert [x["name"] for x in s["holdings"]].count("The Edge") == 1
+    # every holding comes from what EasyEquities holds now, not from old buy emails
+    assert {x["account"] for x in s["holdings"]} <= {"EasyEquities ZAR", "EasyProperties ZAR"}
     assert s["value"] == pytest.approx(1050.0 + ep_total + s["cash"])
     assert s["invested"] == 1676.0  # the email deposit (Gmail history wins over the statement when both exist)
 
@@ -420,6 +422,26 @@ def test_statement_file_names_and_cost_types():
     assert sync.cost_type("VAT on custody fee") == "VAT"
     assert sync.cost_type("Dividend Withholding Tax @ 20%") == "Dividend tax"
     assert sync.cost_type("Broker commission") == "Brokerage"
+
+
+def test_sold_shares_from_emails_do_not_show_as_holdings(market):
+    h = register("soldout")
+    api.post("/api/invest/transactions", headers=h, json={"date": "2025-01-10", "kind": "buy", "symbol": "GRT.JO",
+                                                          "quantity": 10, "price": 16, "asset_class": "reit"})
+    db = SessionLocal()
+    from app.invest.models import InvestTxn
+    from app.models import User
+
+    uid = db.query(User).filter(User.email == "soldout@inv.example.com").one().id
+    db.add(InvestTxn(user_id=uid, date=date(2024, 5, 1), kind="buy", symbol="TRE.JO", name="Trencor Limited",
+                     quantity=500, price=8, amount=4000, source="easyequities"))  # delisted since; no sell email
+    db.commit()
+    db.close()
+    api.put("/api/ee/platform", headers=h, json={"username": "me", "password": "secret"})
+    symbols = [x["symbol"] for x in api.get("/api/invest/summary", headers=h).json()["holdings"]]
+    assert "TRE.JO" not in symbols  # gone from EasyEquities, so gone from holdings
+    assert "GRT.JO" in symbols  # typed in by hand, still counts
+    api.delete("/api/ee/platform", headers=h)
 
 
 def test_failed_sync_keeps_last_snapshot(market, monkeypatch):

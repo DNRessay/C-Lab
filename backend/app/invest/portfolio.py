@@ -97,9 +97,12 @@ def summary(db: Session, user_id: int):
     taken = (ee_view or {}).get("taken_at") or ""
 
     rows, total_value, total_cost = [], 0.0, 0.0
-    txn_pos = holdings(txns)
+    # With EasyEquities connected, its live holdings are the truth: trades read from emails are history only
+    # (shares can leave through schemes, delistings or bundle changes without a sell email). Manual entries still count.
+    txn_pos = holdings([t for t in txns if t.source != "easyequities"] if ee_view else txns)
+    extra_pos = holdings(txns) if ee_view else txn_pos  # dividends/realised gains per symbol, for the EE rows
     for h in ee_rows:
-        extra = txn_pos.get(h["symbol"], {})
+        extra = extra_pos.get(h["symbol"], {})
         qty = h.get("shares")
         rows.append({
             "symbol": h["symbol"], "name": h["name"], "asset_class": h["asset_class"], "account": h["account"],
