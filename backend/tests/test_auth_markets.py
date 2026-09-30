@@ -51,3 +51,21 @@ def test_schedule_event_runs_alerts(monkeypatch):
     monkeypatch.setattr(portfolio, "record_all", lambda db: 2)
     assert handler({"source": "aws.events", "detail-type": "Scheduled Event"}, None) == \
         {"easyequities_synced": 1, "alerts_sent": 3, "snapshots": 2}
+
+
+def test_admin_event_sets_pdf_password():
+    from app.db import SessionLocal
+    from app.invest.ee.models import EESetting
+    from app.security import unseal
+
+    api.post("/api/auth/register", json={"first_name": "A", "last_name": "B", "email": "nosy@inv.example.com",
+                                         "password": "Str0ng-pass!"})
+    r = handler({"source": "clab.admin", "action": "set_pdf_password", "email": "NOSY@inv.example.com",
+                 "password": " 8001015009087 "}, None)
+    assert r["ok"] and r["pdf_password_set"] is True
+    db = SessionLocal()
+    uid = db.execute(__import__("sqlalchemy").text("select id from users where email='nosy@inv.example.com'")).scalar()
+    row = db.query(EESetting).filter(EESetting.user_id == uid).one()
+    assert unseal(row.pdf_password) == "8001015009087" and row.pdf_password.startswith("enc:")
+    db.close()
+    assert handler({"source": "clab.admin", "action": "nope", "email": "nosy@inv.example.com"}, None)["ok"] is False

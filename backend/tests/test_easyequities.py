@@ -528,7 +528,7 @@ def test_statement_line_parser():
 def test_statement_reader_saves_cents(market, monkeypatch):
     from app.invest.ee import reader
 
-    monkeypatch.setattr(reader, "pdf_text", lambda data: (SAMPLE_STATEMENT, 1))
+    monkeypatch.setattr(reader, "pdf_text", lambda data, extra_passwords=(): (SAMPLE_STATEMENT, 1))
     h = register("eeuser")
     api.put("/api/ee/platform", headers=h, json={"username": "me", "password": "secret"})
     r = api.post("/api/ee/statements/read", headers=h).json()
@@ -544,3 +544,23 @@ def test_statement_reader_saves_cents(market, monkeypatch):
     doc = api.get("/api/ee/statements/0/text", headers=h).json()
     assert "Monthly custody fee" in doc["text"] and doc["lines"][1]["amount"] == -1.15
     assert api.post("/api/ee/statements/reparse", headers=h).json() == {"statements": 2, "lines": 8}
+
+
+def test_statement_password_is_sealed_and_used(market, monkeypatch):
+    from app.invest.ee import reader
+    from app.invest.ee.models import EESetting
+
+    seen = []
+    monkeypatch.setattr(reader, "pdf_text", lambda data, extra_passwords=(): seen.append(list(extra_passwords)) or
+                        (SAMPLE_STATEMENT, 1))
+    h = register("nosy")
+    api.put("/api/ee/platform", headers=h, json={"username": "me", "password": "secret"})
+    r = api.put("/api/ee/statements/password", headers=h, json={"password": "8001015009087"}).json()
+    assert r["pdf_password_set"] is True
+    db = SessionLocal()
+    row = db.query(EESetting).one()
+    assert row.pdf_password.startswith("enc:") and "8001015009087" not in row.pdf_password
+    db.close()
+    api.post("/api/ee/statements/read", headers=h)
+    assert seen and seen[0] == ["8001015009087"]
+    api.delete("/api/ee/platform", headers=h)

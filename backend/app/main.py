@@ -71,7 +71,34 @@ _asgi = Mangum(app, lifespan="off")
 
 # Lambda entrypoint: app.main.handler. The nightly EventBridge schedule calls it too:
 # EasyEquities sync first (so prices are fresh), then price alerts.
+def admin(event):
+    """Direct Lambda invokes only (AWS credentials needed; a Function URL request can't produce this event shape)."""
+    from sqlalchemy import func, select
+
+    from .invest.ee import reader
+    from .invest.ee.models import EESetting
+    from .models import User
+    from .security import seal
+
+    db = SessionLocal()
+    try:
+        user = db.scalar(select(User).where(func.lower(User.email) == str(event.get("email", "")).lower()))
+        if not user:
+            return {"ok": False, "error": "no such user"}
+        if event.get("action") == "set_pdf_password":
+            row = db.scalar(select(EESetting).where(EESetting.user_id == user.id)) or EESetting(user_id=user.id)
+            row.pdf_password = seal(str(event.get("password", "")).strip())
+            db.add(row)
+            db.commit()
+            return {"ok": True, **{k: v for k, v in reader.status(db, user.id).items() if k != "last_read"}}
+        return {"ok": False, "error": "unknown action"}
+    finally:
+        db.close()
+
+
 def handler(event, context):
+    if isinstance(event, dict) and event.get("source") == "clab.admin":
+        return admin(event)
     if isinstance(event, dict) and event.get("source") == "aws.events":
         from .invest.alerts import check_all
         from .invest.ee.sync import sync_all

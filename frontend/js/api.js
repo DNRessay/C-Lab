@@ -119,6 +119,8 @@ export const api = {
   eeTransactions: () => get("/api/ee/transactions"),
   eeStatements: () => get("/api/ee/statements"),
   eeReadStatements: () => post("/api/ee/statements/read"),
+  eeReaderStatus: () => get("/api/ee/statements/reader"),
+  eeSetPdfPassword: (password) => put("/api/ee/statements/password", { password }),
   eeStatementText: (id) => get(`/api/ee/statements/${id}/text`),
   eeStatementPdf: (id, inline = false) => request(`/api/ee/statements/${id}${inline ? "?inline=true" : ""}`, { raw: true }),
   eeMails: (kind = "") => get(`/api/ee/mails${qs({ kind })}`),

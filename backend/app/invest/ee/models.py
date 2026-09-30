@@ -105,3 +105,12 @@ class EEStatementLine(Base):
     amount: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     balance: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     category: Mapped[str] = text(20)
+
+
+class EESetting(Base):
+    """Small per-user extras for EasyEquities, kept out of EEConnection so no column migration is needed."""
+
+    __tablename__ = "ee_settings"
+    id: Mapped[int] = pk()
+    user_id: Mapped[int] = mapped_column(BigId, ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
+    pdf_password: Mapped[str] = text()  # sealed; EasyEquities locks statement PDFs (usually with your ID number)

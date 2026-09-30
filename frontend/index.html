@@ -86,6 +86,14 @@
             <div class="row"><button type="submit">Connect</button><button type="button" id="ee-platform-off" class="secondary" hidden>Disconnect</button></div>
           </form>
         </div>
+      <div class="card">
+        <h3>Statement password</h3>
+        <p class="muted">EasyEquities locks its PDF statements, usually with your ID number. C-Lab needs it to read them (stored encrypted, only used to open your statements). <span id="pdfpw-state"></span></p>
+        <form id="pdfpw-form" class="row">
+          <input name="password" type="password" autocomplete="off" placeholder="PDF password" class="grow" />
+          <button type="submit">Save</button>
+        </form>
+      </div>
     </section>
 
     <section id="google" hidden>
@@ -576,7 +584,17 @@
       $("#ee-google").disabled = !m.google_available;
       if (!m.google_available) $("#ee-google-note").textContent = "Google sign-in isn't switched on for this app yet.";
     }
-    const loadEE = async () => renderEE(await api.ee());
+    const loadEE = async () => {
+      renderEE(await api.ee());
+      const r = await api.eeReaderStatus().catch(() => null);
+      if (r) $("#pdfpw-state").innerHTML = r.pdf_password_set ? badge("saved", "ok") : badge("not set", "warn");
+    };
+    onSubmit($("#pdfpw-form"), async (d, e) => {
+      const r = await api.eeSetPdfPassword(d.password);
+      e.target.reset();
+      $("#pdfpw-state").innerHTML = r.pdf_password_set ? badge("saved", "ok") : badge("not set", "warn");
+      flash("Saved. Statements that failed will be read again on the next batch.");
+    });
     onSubmit($("#ee-platform-form"), async (d, e) => {
       flash("Logging in to EasyEquities… this can take a minute.", "warn");
       const r = await api.eeConnectPlatform(d);

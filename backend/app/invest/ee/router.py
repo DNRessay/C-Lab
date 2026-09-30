@@ -242,6 +242,25 @@ def reader_status(user: User = Depends(current_user), db: Session = Depends(get_
     return reader.status(db, user.id, connection(db, user))
 
 
+class PdfPasswordIn(BaseModel):
+    password: str
+
+
+@router.put("/statements/password")
+def set_pdf_password(body: PdfPasswordIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """The password EasyEquities locks statement PDFs with. Stored sealed; failed statements are retried with it."""
+    from .models import EESetting, EEStatementDoc
+
+    row = db.scalar(select(EESetting).where(EESetting.user_id == user.id))
+    if not row:
+        row = EESetting(user_id=user.id)
+        db.add(row)
+    row.pdf_password = seal(body.password.strip()) if body.password.strip() else ""
+    db.query(EEStatementDoc).filter(EEStatementDoc.user_id == user.id, EEStatementDoc.status == "error").delete()
+    db.commit()
+    return reader.status(db, user.id, connection(db, user))
+
+
 @router.post("/statements/read")
 def read_statements(user: User = Depends(current_user), db: Session = Depends(get_db)):
     """Read the next batch of statement PDFs into the database."""

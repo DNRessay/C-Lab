@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from ...security import unseal
 from . import mail, platform
-from .models import EEConnection, EEMail, EEStatementDoc, EEStatementLine
+from .models import EEConnection, EEMail, EESetting, EEStatementDoc, EEStatementLine
 
 log = logging.getLogger(__name__)
 BATCH = 25
@@ -143,12 +143,14 @@ def read_batch(db: Session, conn: EEConnection, limit=BATCH, client=None):
     todo = sorted(todo, key=lambda x: (x[1]["kind"] == "monthly", x[1]["period"]), reverse=True)[:limit]
     if not todo:
         return {"read_now": 0, "left": 0, "lines_now": 0}
+    setting = db.scalar(select(EESetting).where(EESetting.user_id == conn.user_id))
+    passwords = [unseal(setting.pdf_password)] if setting and setting.pdf_password else []
     p = client or platform.Platform()
     p.login(conn.username, unseal(conn.password))
     read = lines = 0
     for it, info in todo:
         try:
-            body, pages = pdf_text(p.download(it["url"]))
+            body, pages = pdf_text(p.download(it["url"]), extra_passwords=passwords)
             doc = save_doc(db, conn, it, info, body, pages)
             if read == 0:  # the format only, to tune the parser without exposing the contents
                 log.info("Statement layout (%s, %s): %s", info["kind"], info["period"], shape(body))
@@ -187,7 +189,10 @@ def lines_as_statement_rows(db: Session, user_id: int):
 def status(db: Session, user_id: int, conn: EEConnection = None):
     docs = list(db.scalars(select(EEStatementDoc).where(EEStatementDoc.user_id == user_id)))
     total = len(((conn.snapshot or {}).get("statements") or [])) if conn else 0
+    setting = db.scalar(select(EESetting).where(EESetting.user_id == user_id))
     return {"total": total, "done": sum(1 for d in docs if d.status == "ok"),
+            "pdf_password_set": bool(setting and setting.pdf_password),
+            "last_error": next((d.error for d in sorted(docs, key=lambda d: d.read_at, reverse=True) if d.error), ""),
             "failed": sum(1 for d in docs if d.status == "error"), "lines": sum(d.lines_found for d in docs),
             "last_read": max((d.read_at for d in docs), default=None)}
 
