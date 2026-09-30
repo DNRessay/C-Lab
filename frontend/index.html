@@ -80,6 +80,7 @@
         </div>
       </div>
       <div id="sum-overview"></div>
+      <div class="ai-box" id="ai-overview" data-section="overview"></div>
       <div id="ee-overview" hidden>
         <h2>EasyEquities accounts</h2>
         <div class="card"><div class="chart-box short"><canvas id="account-chart" aria-label="Value per EasyEquities account" role="img"></canvas></div></div>
@@ -171,6 +172,7 @@
         </div>
       </div>
       <div id="sum-holdings"></div>
+      <div class="ai-box" id="ai-holdings" data-section="holdings"></div>
       <div class="card table-wrap"><table>
         <thead><tr><th>Holding</th><th class="num">Units</th><th class="num">Avg cost</th><th class="num">Price</th><th class="num">Value</th><th class="num">Gain</th><th class="num">Dividends</th><th></th></tr></thead>
         <tbody id="holding-rows"></tbody>
@@ -207,6 +209,7 @@
       </div>
 
       <div id="sum-transactions"></div>
+      <div class="ai-box" id="ai-transactions" data-section="transactions"></div>
 
       <details class="section" id="sec-txns">
         <summary><span>Your transactions</span><span class="count" id="cnt-txns"></span></summary>
@@ -324,11 +327,13 @@
         <tbody id="watch-rows"></tbody>
       </table></div>
       <div id="sum-watchlist"></div>
+      <div class="ai-box" id="ai-watchlist" data-section="watchlist"></div>
     </section>
 
     <!-- Property -->
     <section id="property" hidden>
       <div id="sum-property"></div>
+      <div class="ai-box" id="ai-property" data-section="property"></div>
       <div id="ep-wrap" hidden>
         <h2 style="margin-top:0">EasyProperties</h2>
         <div class="chart-grid">
@@ -416,6 +421,7 @@
       </div>
 
       <div id="sum-banking"></div>
+      <div class="ai-box" id="ai-banking" data-section="banking"></div>
 
       <h2>Your banks</h2>
       <p class="muted">Each account's standing is the balance on its latest transaction. Wrong type? Change it: credit cards and loans count as debt.</p>
@@ -462,13 +468,25 @@
         </table></div>
       </details>
     </section>
+    <!-- Ask AI -->
+    <section id="ai" hidden>
+      <div class="card chat">
+        <div id="chat-log" class="chat-log" aria-live="polite"></div>
+        <div class="chips" id="chat-chips"></div>
+        <form id="chat-form" class="chat-form">
+          <textarea name="q" rows="2" placeholder="Ask about your money: spending, fees, debt, dividends, what to do next…" required></textarea>
+          <div class="row"><button type="submit">Send</button><button type="button" class="secondary small" id="chat-clear">New chat</button></div>
+        </form>
+        <p class="muted" style="margin:0.5rem 0 0"><small>Answers come from Groq using your C-Lab totals (no account numbers). Not financial advice.</small></p>
+      </div>
+    </section>
   </main>
   <script type="module">
     import { api } from "/js/api.js";
     import { $, $$, action, amount, badge, day, download, empty, esc, flash, money, onSubmit, page, pct, setActive } from "/js/ui.js";
 
     const PAGES = [["markets", "Markets"], ["overview", "Portfolio"], ["holdings", "Holdings"], ["transactions", "Transactions"],
-      ["banking", "Banking"], ["watchlist", "Watchlist"], ["property", "Property"],
+      ["banking", "Banking"], ["watchlist", "Watchlist"], ["property", "Property"], ["ai", "Ask AI"],
       ["account", "Account", [["profile", "Profile"], ["easyequities", "EasyEquities"], ["google", "Google"]]]];
     page(PAGES);
 
@@ -1505,15 +1523,70 @@
         : "Banking next to your investments and property, month by month.";
     }
 
+    // AI suggestions (Cohere) under each tab, and Ask AI (Groq).
+    const IMPACT = { high: ["big win", "ok"], medium: ["worth doing", ""], low: ["small", "muted"] };
+    let aiStatus = null;
+    async function loadSuggestions(section, refresh = false) {
+      const box = $(`#ai-${section}`);
+      if (!box) return;
+      aiStatus ||= await api.aiStatus().catch(() => ({ suggestions: false, chat: false }));
+      if (!aiStatus.suggestions) { box.innerHTML = ""; return; }
+      if (refresh) box.innerHTML = `<div class="card ai-card"><h3>Suggestions</h3><p class="muted">Thinking about your numbers…</p></div>`;
+      let r;
+      try { r = await api.aiSuggestions(section, refresh); }
+      catch (e) { box.innerHTML = `<div class="card ai-card"><h3>Suggestions</h3><p class="muted">${esc(e.message)}</p></div>`; return; }
+      box.innerHTML = `<div class="card ai-card"><div class="ai-head"><h3>Suggestions</h3>
+        <button class="secondary small ai-go">${r.items.length ? "Refresh" : "Suggest improvements"}</button></div>
+        ${r.items.length ? `<ol class="ai-list">${r.items.map(i => `<li><strong>${esc(i.title)}</strong> ${badge(...(IMPACT[i.impact] || IMPACT.medium))}
+          ${i.value ? `<small class="muted"> · about ${money(i.value)} a year</small>` : ""}<br><span>${esc(i.detail)}</span></li>`).join("")}</ol>
+          <p class="muted"><small>From Cohere, ${day(r.created_at)}. Based on your totals; not financial advice.</small></p>`
+        : `<p class="muted">Get ideas on this page's numbers, checked against your banking and investments together.</p>`}</div>`;
+      $(".ai-go", box).addEventListener("click", () => loadSuggestions(section, true));
+    }
+
+    const CHAT_KEY = "clab_chat";
+    let chatMsgs = [];
+    try { chatMsgs = JSON.parse(sessionStorage.getItem(CHAT_KEY) || "[]"); } catch { chatMsgs = []; }
+    const saveChat = () => { try { sessionStorage.setItem(CHAT_KEY, JSON.stringify(chatMsgs.slice(-30))); } catch { /* private mode */ } };
+    const fmtReply = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/^\s*[-*] (.+)$/gm, "• $1").replace(/\n/g, "<br>");
+    function renderChat(thinking = false) {
+      $("#chat-log").innerHTML = chatMsgs.map(m => `<div class="msg ${m.role}">${m.role === "user" ? esc(m.content) : fmtReply(m.content)}</div>`).join("")
+        + (thinking ? `<div class="msg assistant muted">Thinking…</div>` : "")
+        || `<p class="muted">Ask anything about your money. C-Lab sends the AI your latest totals: investments, property, bank, debt and fees.</p>`;
+      $("#chat-log").scrollTop = $("#chat-log").scrollHeight;
+    }
+    const CHIPS = ["How am I doing overall?", "Where can I cut spending?", "Should I pay off debt or invest more?",
+      "How much do fees cost me a year?", "Which dividends coming up look good?", "How much should I keep in the bank?"];
+    async function ask(q) {
+      chatMsgs.push({ role: "user", content: q });
+      renderChat(true);
+      try { const r = await api.aiChat(chatMsgs); chatMsgs.push({ role: "assistant", content: r.reply }); }
+      catch (e) { chatMsgs.push({ role: "assistant", content: `Couldn't answer: ${e.message}` }); }
+      saveChat();
+      renderChat();
+    }
+    async function loadChat() {
+      aiStatus ||= await api.aiStatus().catch(() => ({ suggestions: false, chat: false }));
+      $("#chat-chips").innerHTML = CHIPS.map(c => `<button type="button" class="secondary small chip">${esc(c)}</button>`).join("");
+      $$("#chat-chips .chip").forEach(b => b.addEventListener("click", () => ask(b.textContent)));
+      $("#chat-form").q.disabled = !aiStatus.chat;
+      if (!aiStatus.chat) { $("#chat-log").innerHTML = `<p class="muted">Ask AI needs a Groq key (GitHub secret GROQ_API_KEYS).</p>`; return; }
+      renderChat();
+    }
+    onSubmit($("#chat-form"), async (d, e) => { e.target.reset(); await ask(d.q.trim()); });
+    $("#chat-form").q.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#chat-form").requestSubmit(); } });
+    $("#chat-clear").addEventListener("click", () => { chatMsgs = []; saveChat(); renderChat(); });
+
     // pages
     const LOAD = { markets: loadMarkets, overview: loadSummary, easyequities: loadEE, google: loadEE, holdings: loadSummary,
-      transactions: loadTxns, banking: loadBank, watchlist: loadWatch, property: loadProps, profile: loadAccount };
+      transactions: loadTxns, banking: loadBank, watchlist: loadWatch, ai: loadChat, property: loadProps, profile: loadAccount };
     const ALIAS = { account: "profile" };
     function show() {
       const hash = location.hash.slice(1), id = LOAD[hash] ? hash : ALIAS[hash] || "markets";
       $$("main section").forEach(s => s.hidden = s.id !== id);
       setActive(id);
       LOAD[id]().catch(e => flash(e.message, "err"));
+      loadSuggestions(id).catch(() => {});
     }
     addEventListener("hashchange", show);
     show();

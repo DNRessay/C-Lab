@@ -39,6 +39,16 @@ Parameters:
     Type: String
     NoEcho: true
     Default: ""
+  CohereApiKey:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: Cohere key for the suggestions.
+  GroqApiKeys:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: Groq key(s) for Ask AI, comma separated to rotate.
   DefaultFromEmail:
     Type: String
     Default: "C-Lab <noreply@example.com>"
@@ -66,6 +76,8 @@ Resources:
           DEFAULT_FROM_EMAIL: !Ref DefaultFromEmail
           GOOGLE_CLIENT_ID: !Ref GoogleClientId
           GOOGLE_CLIENT_SECRET: !Ref GoogleClientSecret
+          COHERE_API_KEY: !Ref CohereApiKey
+          GROQ_API_KEYS: !Ref GroqApiKeys
       FunctionUrlConfig:
         AuthType: NONE
       Events:

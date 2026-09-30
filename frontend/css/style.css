@@ -375,3 +375,14 @@ details.group-card h4 { margin: 0.6rem 0 0.4rem; font-size: 0.85rem; color: var(
 #blog-posts a.card { color: inherit; text-decoration: none; }
 tr.dim td { opacity: 0.6; }
 .group-row td { background: var(--panel-2); color: var(--accent); }
+.ai-card { border-left: 3px solid var(--accent); }
+.ai-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.ai-head h3 { margin: 0; }
+.ai-list { margin: 0.6rem 0 0; padding-left: 1.2rem; line-height: 1.5; }
+.ai-list li { margin-bottom: 0.6rem; }
+.chat-log { max-height: 60vh; min-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.6rem; margin-bottom: 0.8rem; }
+.msg { padding: 0.6rem 0.8rem; border-radius: 12px; max-width: 85%; line-height: 1.5; overflow-wrap: anywhere; }
+.msg.user { align-self: flex-end; background: var(--accent); color: #fff; }
+.msg.assistant { align-self: flex-start; background: var(--panel-2); border: 1px solid var(--line); }
+.chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.6rem; }
+.chat-form textarea { width: 100%; resize: vertical; margin-bottom: 0.5rem; }

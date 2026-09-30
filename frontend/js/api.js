@@ -109,6 +109,9 @@ export const api = {
   updateProperty: (id, b) => put(`/api/invest/properties/${id}`, b),
   deleteProperty: (id) => del(`/api/invest/properties/${id}`),
 
+  aiStatus: () => get("/api/ai/status"),
+  aiSuggestions: (section, refresh) => get(`/api/ai/suggestions/${section}${refresh ? "?refresh=true" : ""}`),
+  aiChat: (messages) => post("/api/ai/chat", { messages }),
   blog: () => get("/api/invest/blog"),
   blogRefresh: () => post("/api/invest/blog/refresh"),
   blogWatch: (b) => post("/api/invest/blog/watch", b),

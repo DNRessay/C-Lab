@@ -51,6 +51,11 @@ class Settings:
         # "Sign in with Google" for the EasyEquities email reader (read-only Gmail).
         self.google_client_id = _env("GOOGLE_CLIENT_ID")
         self.google_client_secret = _env("GOOGLE_CLIENT_SECRET")
+        # AI: Cohere writes suggestions, Groq answers chat (several keys, comma separated, rotate on rate limits).
+        self.cohere_api_key = _env("COHERE_API_KEY")
+        self.cohere_model = _env("COHERE_MODEL", "command-a-03-2025")
+        self.groq_api_keys = _list("GROQ_API_KEYS") or _list("GROQ_API_KEY")
+        self.groq_model = _env("GROQ_MODEL", "llama-3.3-70b-versatile")
         self.api_url = _env("API_URL").rstrip("/")  # public URL of this API; defaults to the request's own
 
         self.mysql_ssl_ca = _env("MYSQL_SSL_CA")

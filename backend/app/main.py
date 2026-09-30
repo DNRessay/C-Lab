@@ -12,6 +12,7 @@ from . import auth
 from .config import settings
 from .db import SessionLocal, init_db
 from .invest import markets
+from .ai.router import router as ai_router
 from .banking.router import router as bank_router
 from .invest.ee.router import router as ee_router
 from .invest.router import router as invest_router
@@ -51,7 +52,7 @@ async def unhandled(request: Request, exc: Exception):
     return JSONResponse({"detail": "Internal server error."}, status_code=500)
 
 
-for r in (auth.router, invest_router, markets.router, ee_router, bank_router):
+for r in (auth.router, invest_router, markets.router, ee_router, bank_router, ai_router):
     app.include_router(r)
 
 
