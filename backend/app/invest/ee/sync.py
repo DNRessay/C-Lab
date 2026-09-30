@@ -56,10 +56,10 @@ def rand_rate(db: Session, currency: str, day: date = None):
 
 # ── Platform ────────────────────────────────────────────────────────────────
 
-def sync_platform(db: Session, conn: EEConnection, client=None, ep_client=None):
+def sync_platform(db: Session, conn: EEConnection, client=None, ep_fetch=None):
     conn.platform_tried_at = utcnow()
     try:
-        snap = platform.snapshot(conn.username, unseal(conn.password), client=client, ep_client=ep_client)
+        snap = platform.snapshot(conn.username, unseal(conn.password), client=client, ep_fetch=ep_fetch)
     except platform.PlatformError as e:
         conn.platform_status, conn.platform_error, conn.platform_error_stage = "error", e.message, e.stage
         conn.platform_debug = e.page
@@ -79,7 +79,7 @@ def sync_platform(db: Session, conn: EEConnection, client=None, ep_client=None):
                  [(a.get("name"), len(a.get("holdings", [])), a.get("warnings", [])) for a in snap["accounts"]])
         log.info("EasyEquities statement links: %s", snap.get("statement_links"))
         log.info("EasyProperties: %s", snap.get("easyproperties"))
-        log.info("EasyEquities statement page: %s", snap.get("statement_page"))
+        log.info("EasyEquities statements: %d listed %s", len(snap.get("statements") or []), snap.get("statements_error", ""))
         log.info("EasyEquities account switch: %s",
                  {a.get("name"): a.get("switch_debug") for a in snap["accounts"] if a.get("switch_debug")})
     db.commit()

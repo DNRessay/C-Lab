@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.db import SessionLocal
-from app.invest.ee import mail, platform, sync
+from app.invest.ee import mail, platform, properties, sync
 from app.invest.ee.models import EEConnection
 from app.main import app
 from tests.test_invest import fake_fetch, register
@@ -143,6 +143,12 @@ class FakeSession:
             return FakeResponse(200, "<div>#Shares</div><div>1</div><div>#FSR</div><div>.0068</div>")
         if "Valuations" in url:
             return FakeResponse(200, data='{"TopSummary": {"AccountValue": "R1 100.00"}}')
+        if url.endswith("/Statement"):
+            return FakeResponse(200, STATEMENT_PAGE)
+        if "/Statement/Download" in url:
+            r = FakeResponse(200)
+            r.content = PDF
+            return r
         if "GetTransactions" in url:
             if self.account != "111":
                 return FakeResponse(200, data=[])
@@ -159,31 +165,75 @@ class FakeSession:
         return FakeResponse(404)
 
 
-EP_CARDS = """<html><h1>My Properties</h1>
-<div class="card"><h3>The Edge</h3><p>CURRENT VALUE</p><p>RENTAL YIELD</p><b>0.44%</b><b>R 117.74</b><p>VALUATION CHG</p><b>R 30.53</b></div>
-<div class="card"><h3>Four on O - Sea Point</h3><p>CURRENT VALUE</p><p>RENTAL YIELD</p><b>0.89%</b><b>R 198.01</b><p>VALUATION CHG</p><b>R 50.69</b></div>
-<a href="/Portfolio">Portfolio</a></html>"""
+STATEMENT_PAGE = """<html><title>Statements</title><div class="panel"><h4>EasyEquities ZAR</h4>
+<button class="statementDownloadBtn" data-url="/Statement/Download?id=1" data-filename="EE ZAR Aug 2026.pdf">Download</button>
+<button class="statementDownloadBtn" data-url="/Statement/Download?id=2" data-filename="EE ZAR Jul 2026.pdf">Download</button>
+</div></html>"""
+PDF = b"%PDF-1.4 fake statement"
+
+# What the EasyProperties API is guessed to return (holding + property per row, prices in cents).
+EP_REPLY = {"trustAccount": {"holdings": [
+    {"property": {"title": "The Edge", "contractCode": "EQU.ZA.PROP9", "financialInfo": {"rentalYield": 0.44}},
+     "holding": {"quantity": 87.2068, "lastPrice": 135.0, "vwap": 100.0}},
+    {"property": {"title": "Four on O - Sea Point", "financialInfo": {"rentalYield": 0.89}},
+     "holding": {"quantity": 150, "lastPrice": 132.007, "vwap": 98.21}},
+]}}
+LOGIN_PAGE = """<html><title>Log in | EasyID</title><form id="loginForm" method="post" action="">
+<input name="ReturnUrl" value="/connect/authorize/callback?x=1"><input name="ClientIdForProperties" value="">
+<input name="Response" value=""><input name="Username"><input name="IsUsernameProvided" value="false">
+<input name="Password"><input name="__RequestVerificationToken" value="csrf"></form></html>"""
 
 
-class FakeEPSession(FakeSession):
-    """EasyProperties site: same login, no EasyEquities-style overview, properties shown as cards on the landing page."""
+class FakeIdpSession:
+    """EasyID (OAuth code + PKCE) and the EasyProperties API."""
 
-    def post(self, url, data=None, **kw):
-        if url.endswith(platform.SIGN_IN):
-            return FakeResponse(302, headers={"location": "/Home"})
+    def __init__(self, accept=True):
+        self.accept, self.sent = accept, {}
+
+    def get(self, url, headers=None, **kw):
+        if "/connect/authorize?" in url:
+            return FakeResponse(200, LOGIN_PAGE)
+        if "/connect/authorize/callback" in url:
+            return FakeResponse(302, headers={"location": properties.REDIRECT + "?code=abc&state=x"})
+        if url.startswith(properties.API):
+            assert headers["Authorization"] == "Bearer tok"
+            return FakeResponse(200, data=EP_REPLY) if url.endswith("/user/account") else FakeResponse(404)
         return FakeResponse(404)
 
-    def get(self, url, **kw):
-        return FakeResponse(200, EP_CARDS) if url.endswith("/Home") else FakeResponse(404, "not here")
+    def post(self, url, data=None, json=None, **kw):
+        if url.endswith("/user/accesstoken"):
+            self.sent["token"] = json
+            return FakeResponse(200, data={"accessToken": "tok", "refreshToken": "r"})
+        self.sent["login"] = data
+        if not self.accept:
+            return FakeResponse(200, "<form id='loginForm'>Invalid username or password</form>")
+        return FakeResponse(302, headers={"location": "/connect/authorize/callback?client_id=x"})
 
 
-def ep_client():
-    return platform.Platform(platform.EP_BASE_URL, FakeEPSession())
+REAL_EP_FETCH = properties.fetch
+
+
+def fake_ep_fetch(u, p):
+    return REAL_EP_FETCH(u, p, session=FakeIdpSession())
 
 
 def fake_platform(login_status=302):
-    return lambda base_url=platform.BASE_URL: RealPlatform(
-        base_url, FakeEPSession() if base_url == platform.EP_BASE_URL else FakeSession(login_status=login_status))
+    return lambda base_url=platform.BASE_URL: RealPlatform(base_url, FakeSession(login_status=login_status))
+
+
+def test_easyproperties_login_and_holdings():
+    idp = FakeIdpSession()
+    ep = REAL_EP_FETCH("me", "pw", session=idp)
+    assert idp.sent["login"]["Username"] == "me" and idp.sent["login"]["__RequestVerificationToken"] == "csrf"
+    assert idp.sent["token"]["authorizationCode"] == "abc" and idp.sent["token"]["codeVerifier"]
+    edge, four = ep["holdings"]
+    assert (edge["name"], edge["shares"], edge["contract_code"]) == ("The Edge", 87.2068, "EQU.ZA.PROP9")
+    assert edge["current_value"] == pytest.approx(117.73, abs=0.01) and edge["purchase_value"] == pytest.approx(87.21, abs=0.01)
+    assert four["rental_yield"] == pytest.approx(0.0089)
+    assert ep["shapes"]["/user/account"]["trustAccount"]["holdings"][1] == "x2"  # keys only, no values
+    with pytest.raises(platform.PlatformError) as e:
+        REAL_EP_FETCH("me", "wrong", session=FakeIdpSession(accept=False))
+    assert e.value.stage == "easyproperties login"
 
 
 def test_platform_parsers():
@@ -195,15 +245,17 @@ def test_platform_parsers():
 
 
 def test_snapshot_and_login_failure():
-    snap = platform.snapshot("u", "p", client=platform.Platform(session=FakeSession()), ep_client=ep_client())
+    snap = platform.snapshot("u", "p", client=platform.Platform(session=FakeSession()), ep_fetch=fake_ep_fetch)
     eq, prop = snap["accounts"]  # the demo account is skipped
     assert snap["statement_links"] == ["/Statements/Index"]
     assert eq["value"] == 1100.0 and eq["holdings"][0]["shares"] == 1.0068
     # EasyProperties holdings come from the EasyProperties site; the account = wallet cash + properties.
     assert [h["name"] for h in prop["holdings"]] == ["The Edge", "Four on O - Sea Point"]
-    assert prop["holdings"][1]["purchase_value"] == pytest.approx(198.01 - 50.69)
-    assert prop["value"] == pytest.approx(1100.0 - 95.0 + 117.74 + 198.01)
-    assert snap["easyproperties"]["source"] == "/Home"
+    assert prop["holdings"][1]["purchase_value"] == pytest.approx(150 * 0.9821)
+    assert prop["value"] == pytest.approx(1100.0 - 95.0 + 87.2068 * 1.35 + 150 * 1.32007)
+    assert snap["easyproperties"]["source"] == "api"
+    assert [x["name"] for x in snap["statements"]] == ["EE ZAR Aug 2026.pdf", "EE ZAR Jul 2026.pdf"]
+    assert snap["statements"][0]["account"] == "EasyEquities ZAR"
     with pytest.raises(platform.PlatformError) as e:
         platform.snapshot("u", "bad", client=platform.Platform(session=FakeSession(login_status=200)))
     assert e.value.stage == "login"
@@ -214,9 +266,9 @@ def test_snapshot_and_login_failure():
 
 def test_account_switch_that_does_not_stick_is_not_copied(monkeypatch):
     monkeypatch.setitem(HOLDINGS, "222", HOLDINGS["111"])
-    broken_ep = platform.Platform(platform.EP_BASE_URL, FakeSession(login_status=200))
-    snap = platform.snapshot("u", "p", client=platform.Platform(session=FakeSession()), ep_client=broken_ep)
-    assert "EasyProperties login" in snap["easyproperties"]["error"] or "login" in snap["easyproperties"]["error"]
+    broken_ep = lambda u, p: REAL_EP_FETCH(u, p, session=FakeIdpSession(accept=False))  # noqa: E731
+    snap = platform.snapshot("u", "p", client=platform.Platform(session=FakeSession()), ep_fetch=broken_ep)
+    assert snap["easyproperties"]["error"].startswith("easyproperties login")
     prop = snap["accounts"][1]
     assert prop["holdings"] == [] and "previous account" in prop["warnings"][0]
 
@@ -247,6 +299,7 @@ def market(monkeypatch):
     monkeypatch.setattr(prices, "fetch", fake_fetch)
     monkeypatch.setattr(mail, "fetch", lambda *a, **k: (fake_messages(), 9, "1"))
     monkeypatch.setattr(platform, "Platform", fake_platform())
+    monkeypatch.setattr(properties, "fetch", fake_ep_fetch)
 
 
 def test_connect_sync_and_portfolio(market):
@@ -275,15 +328,21 @@ def test_connect_sync_and_portfolio(market):
     aip = next(x for x in s["holdings"] if x["symbol"] == "AIP.JO")
     assert aip["price"] == 52.0 and aip["price_source"].startswith("EasyEquities") and aip["account"] == "EasyEquities ZAR"
     assert aip["value"] == 1050.0 and aip["quantity"] == 1.0068
-    ep_total = 117.74 + 198.01
+    ep_total = 87.2068 * 1.35 + 150 * 1.32007
     assert s["easyequities"]["value"] == pytest.approx(2200.0 - 95.0 + ep_total)
     assert s["cash"] == 2200.0 - 1050.0 - 95.0  # wallet cash = account value - holdings
     # The Edge bought by email is the same holding as the EasyProperties card, so it's counted once.
-    assert [x["symbol"] for x in s["holdings"]].count("EE:THEEDGE") == 1
+    assert [x["name"] for x in s["holdings"]].count("The Edge") == 1
     assert s["value"] == pytest.approx(1050.0 + ep_total + s["cash"])
     assert s["invested"] == 1676.0  # the email deposit (Gmail history wins over the statement when both exist)
 
     assert s["income"] == {"dividend": 2.5, "interest": 0.0, "fee": 1.15, "tax": 0.0}
+
+    st = api.get("/api/ee/statements", headers=h).json()
+    assert st[0] == {"id": 0, "name": "EE ZAR Aug 2026.pdf", "account": "EasyEquities ZAR"}
+    pdf = api.get("/api/ee/statements/0", headers=h)
+    assert pdf.status_code == 200 and pdf.content == PDF and pdf.headers["content-type"] == "application/pdf"
+    assert api.get("/api/ee/statements/9", headers=h).status_code == 404
 
     t = api.get("/api/ee/transactions", headers=h).json()
     assert [r["category"] for r in t["rows"]] == ["fee", "dividend", "trade", "deposit"]  # newest first

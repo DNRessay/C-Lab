@@ -93,6 +93,7 @@ def summary(db: Session, user_id: int):
     # EasyEquities' own holdings are the truth for whatever is in those accounts; transactions fill in the rest.
     ee_rows = [h for a in (ee_view or {}).get("accounts", []) for h in a["holdings"]]
     ee_symbols = {h["symbol"] for h in ee_rows}
+    ee_names = {(h["name"] or "").strip().lower() for h in ee_rows}
     taken = (ee_view or {}).get("taken_at") or ""
 
     rows, total_value, total_cost = [], 0.0, 0.0
@@ -111,8 +112,8 @@ def summary(db: Session, user_id: int):
         total_value += h["value_zar"]
         total_cost += h["cost_zar"]
     for symbol, p in txn_pos.items():
-        if symbol in ee_symbols:
-            continue
+        if symbol in ee_symbols or (p["name"] or "").strip().lower() in ee_names:
+            continue  # already in EasyEquities' own holdings (matched by code or by name)
         if p["quantity"] <= Decimal("0.000001") and not p["realised"] and not p["dividends"]:
             continue
         source, price = "none", None

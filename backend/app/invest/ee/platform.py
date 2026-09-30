@@ -23,6 +23,7 @@ SWITCH_ACCOUNT = "/Menu/UpdateCurrency"
 VALUATIONS = "/AccountOverview/GetTrustAccountValuations"
 HOLDINGS = "/AccountOverview/GetHoldingsView?stockViewCategoryId=12"
 TRANSACTIONS = "/TransactionHistory/GetTransactions"
+STATEMENTS = "/Statement"
 
 
 class PlatformError(Exception):
@@ -141,6 +142,21 @@ def discover(page):
     return sorted(p for p in paths if not re.search(r"\.(png|jpg|svg|css|ico|woff2?)$", p))[:60]
 
 
+def parse_statements(page):
+    soup = BeautifulSoup(page, "html.parser")
+    out = []
+    for b in soup.select(".statementDownloadBtn"):
+        url = b.get("data-url") or ""
+        if not url:
+            continue
+        # The account heading sits in an earlier row of the same dropdown section.
+        section = b.find_parent(class_=re.compile("panel|account|dropDown|statement", re.I))
+        heading = _text(section.find(re.compile("^h[1-6]$|^strong$"))) if section else ""
+        out.append({"name": (b.get("data-filename") or _text(b) or "statement.pdf")[:200], "url": url[:500],
+                    "account": heading[:80]})
+    return out
+
+
 def _redact(text):
     return re.sub(r"[A-Za-z0-9_\-]{24,}", "…", text or "")
 
@@ -220,6 +236,20 @@ class Platform:
             raise PlatformError("switch account", f"HTTP {r.status_code}", r.text)
         self.current = account_id
 
+    def statements(self):
+        """Printable statements listed on /Statement: [{name, url, account}]."""
+        r = self._get("statements", STATEMENTS)
+        return parse_statements(r.text)
+
+    def download(self, url):
+        try:
+            r = self.s.get(self._url(url) if url.startswith("/") else url, timeout=60)
+        except Exception as e:
+            raise PlatformError("statement download", f"request failed ({e})")
+        if r.status_code != 200 or not r.content.startswith(b"%PDF"):
+            raise PlatformError("statement download", f"HTTP {r.status_code}, not a PDF")
+        return r.content
+
     def switch_debug(self, account_id):
         """What EasyEquities answers when asked to use this account (EasyProperties seems to need something else)."""
         out = {}
@@ -288,7 +318,7 @@ def valuation_total(valuation):
     return None
 
 
-def snapshot(username, password, base_url=BASE_URL, client=None, ep_client=None):
+def snapshot(username, password, base_url=BASE_URL, client=None, ep_fetch=None):
     """Log in and read every account. Raises PlatformError; returns a JSON-safe dict."""
     p = client or Platform(base_url)
     p.login(username, password)
@@ -317,16 +347,19 @@ def snapshot(username, password, base_url=BASE_URL, client=None, ep_client=None)
         item["purchase_value"] = sum(h["purchase_value"] or 0 for h in item["holdings"])
         out.append(item)
     snap = {"accounts": out, "statement_links": p.statement_links}
-    if p.statement_links:
-        try:
-            r = p.s.get(p._url(p.statement_links[0]), timeout=30)
-            snap["statement_page"] = {"status": r.status_code, **forms(r.text)}
-        except Exception as e:
-            snap["statement_page"] = {"error": str(e)[:200]}
     try:
-        ep = easyproperties(username, password, client=ep_client)
+        snap["statements"] = p.statements()
+    except PlatformError as e:
+        snap["statements"] = []
+        snap["statements_error"] = str(e)
+    from . import properties
+
+    try:
+        ep = (ep_fetch or properties.fetch)(username, password)
     except PlatformError as e:
         ep = {"holdings": [], "error": str(e), "page": forms(e.page) if e.page else {}}
+    except Exception as e:  # EasyProperties must never break the EasyEquities read
+        ep = {"holdings": [], "error": f"unexpected: {str(e)[:300]}"}
     snap["easyproperties"] = {k: v for k, v in ep.items() if k != "holdings"}
     if ep["holdings"]:
         wallet = next((a for a in out if "properties" in a["name"].lower()), None)
@@ -341,33 +374,3 @@ def snapshot(username, password, base_url=BASE_URL, client=None, ep_client=None)
         wallet["purchase_value"] = sum(h["purchase_value"] or 0 for h in ep["holdings"])
         wallet["value"] = wallet["holdings_value"] + cash
     return snap
-
-
-def easyproperties(username, password, base_url=EP_BASE_URL, client=None):
-    """Your properties from the EasyProperties platform. Tries the EasyEquities-style pages, then 'My Properties' cards."""
-    p = client or Platform(base_url)
-    p.login(username, password)
-    tried = []
-    try:
-        for acc in p.accounts():
-            if not is_demo(acc["name"]):
-                rows = p.holdings(acc["id"], with_shares=False)
-                if rows:
-                    return {"holdings": rows, "source": "holdings view", "tried": tried}
-    except PlatformError as e:
-        tried.append(f"accounts: {e.message}")
-    pages = [p.landing] + EP_PAGES if getattr(p, "landing", "") else EP_PAGES
-    discovered = []
-    for path in dict.fromkeys(pages):
-        try:
-            r = p._get("easyproperties", path or "/")
-        except PlatformError as e:
-            tried.append(f"{path or '/'}: {e.message}")
-            continue
-        cards = parse_property_cards(r.text)
-        if cards:
-            return {"holdings": cards, "source": path or "/", "tried": tried}
-        tried.append(f"{path or '/'}: no property cards")
-        discovered = discovered or discover(r.text)
-    return {"holdings": [], "error": "could not find your properties on the EasyProperties site", "tried": tried,
-            "discovery": discovered}

@@ -1,13 +1,15 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ...deps import current_user, get_db
 from ...models import User
-from ...security import seal
+from ...security import seal, unseal
+from . import platform
 from . import sync
 from .models import EEConnection, EEMail
 
@@ -129,6 +131,30 @@ def sync_now(user: User = Depends(current_user), db: Session = Depends(get_db)):
 def platform_transactions(user: User = Depends(current_user), db: Session = Depends(get_db)):
     rows = sync.platform_transactions(connection(db, user))
     return {"rows": rows, "totals": sync.statement_totals(rows)}
+
+
+@router.get("/statements")
+def statements(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    conn = connection(db, user)
+    items = ((conn.snapshot or {}).get("statements") or []) if conn else []
+    return [{"id": i, "name": x["name"], "account": x.get("account", "")} for i, x in enumerate(items)]
+
+
+@router.get("/statements/{idx}")
+def download_statement(idx: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Logs in to EasyEquities and passes the PDF through; nothing is stored."""
+    conn = connection(db, user)
+    items = ((conn.snapshot or {}).get("statements") or []) if conn else []
+    if not conn or not conn.username or not 0 <= idx < len(items):
+        raise HTTPException(404, "Statement not found. Sync EasyEquities first.")
+    p = platform.Platform()
+    try:
+        p.login(conn.username, unseal(conn.password))
+        pdf = p.download(items[idx]["url"])
+    except platform.PlatformError as e:
+        raise HTTPException(502, f"EasyEquities: {e}")
+    name = items[idx]["name"].replace('"', "") or "statement.pdf"
+    return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 @router.post("/reparse")

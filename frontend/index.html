@@ -98,6 +98,11 @@
         <tbody id="txn-rows"></tbody>
       </table></div>
 
+      <div id="pdf-wrap" hidden>
+        <h2>Printable statements</h2>
+        <div class="card table-wrap"><table><tbody id="pdf-rows"></tbody></table></div>
+      </div>
+
       <div id="stmt-wrap" hidden>
         <h2>EasyEquities statement: dividends, fees and more</h2>
         <p class="muted">Every line from EasyEquities' own transaction history, totalled per account and year. Fees and tax show as negative.</p>
@@ -519,7 +524,19 @@
     }
     $("#stmt-cat").addEventListener("change", renderStatement);
     $("#stmt-acc").addEventListener("change", renderStatement);
+    async function loadPdfs() {
+      const rows = await api.eeStatements();
+      $("#pdf-wrap").hidden = !rows.length;
+      $("#pdf-rows").innerHTML = rows.map(r => `<tr><td>${esc(r.name)}${r.account ? `<br><small class="muted">${esc(r.account)}</small>` : ""}</td>
+        <td><button class="secondary small pdf" data-id="${r.id}" data-name="${esc(r.name)}">Download PDF</button></td></tr>`).join("");
+      $$("#pdf-rows .pdf").forEach(b => action(b, async () => {
+        flash("Fetching the statement from EasyEquities…", "warn");
+        await download(api.eeStatementPdf(b.dataset.id), b.dataset.name);
+        flash("Downloaded.");
+      }));
+    }
     async function loadStatement() {
+      loadPdfs().catch(e => flash(e.message, "err"));
       stmt = await api.eeTransactions();
       $("#stmt-wrap").hidden = !stmt.rows.length;
       const accounts = [...new Set(stmt.rows.map(r => r.account))];
