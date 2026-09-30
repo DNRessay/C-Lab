@@ -188,7 +188,7 @@
       <div id="ep-wrap" hidden>
         <h2 style="margin-top:0">EasyProperties</h2>
         <div class="card table-wrap"><table>
-          <thead><tr><th>Property</th><th class="num">Units</th><th class="num">Price</th><th class="num">Value</th><th class="num">Bought for</th><th class="num">Gain</th></tr></thead>
+          <thead><tr><th>Property</th><th class="num">Value</th><th class="num">Bought for</th><th class="num">Gain</th><th class="num">Rental yield</th></tr></thead>
           <tbody id="ep-rows"></tbody>
         </table></div>
         <h2>Your own property</h2>
@@ -372,8 +372,11 @@
         const ep = s.holdings.filter(h => h.asset_class === "easyproperties");
         $("#ep-wrap").hidden = !ep.length;
         $("#ep-rows").innerHTML = ep.map(h => `<tr><td><strong>${esc(h.name)}</strong><br><small class="muted">${esc(h.account || h.symbol)}</small></td>
-          <td class="num">${units(h.quantity)}</td><td class="num">${money(h.price)}</td><td class="num">${money(h.value)}</td>
-          <td class="num">${money(h.cost)}</td><td class="num">${signed(h.gain)}<br><small>${pct(h.gain_pct)}</small></td></tr>`).join("");
+          <td class="num">${money(h.value)}</td><td class="num">${money(h.cost)}</td>
+          <td class="num">${signed(h.gain)}<br><small>${pct(h.gain_pct)}</small></td>
+          <td class="num">${h.rental_yield != null ? (h.rental_yield * 100).toFixed(2) + "%" : "—"}</td></tr>`).join("") +
+          `<tr><td><strong>Total</strong></td><td class="num"><strong>${money(ep.reduce((a, h) => a + h.value, 0))}</strong></td>
+          <td class="num">${money(ep.reduce((a, h) => a + h.cost, 0))}</td><td class="num">${signed(ep.reduce((a, h) => a + h.gain, 0))}</td><td></td></tr>`;
       }).catch(e => flash(e.message, "err"));
       props = await api.properties();
       $("#prop-rows").innerHTML = props.map(p => `<tr>

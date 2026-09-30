@@ -159,6 +159,33 @@ class FakeSession:
         return FakeResponse(404)
 
 
+EP_CARDS = """<html><h1>My Properties</h1>
+<div class="card"><h3>The Edge</h3><p>CURRENT VALUE</p><p>RENTAL YIELD</p><b>0.44%</b><b>R 117.74</b><p>VALUATION CHG</p><b>R 30.53</b></div>
+<div class="card"><h3>Four on O - Sea Point</h3><p>CURRENT VALUE</p><p>RENTAL YIELD</p><b>0.89%</b><b>R 198.01</b><p>VALUATION CHG</p><b>R 50.69</b></div>
+<a href="/Portfolio">Portfolio</a></html>"""
+
+
+class FakeEPSession(FakeSession):
+    """EasyProperties site: same login, no EasyEquities-style overview, properties shown as cards on the landing page."""
+
+    def post(self, url, data=None, **kw):
+        if url.endswith(platform.SIGN_IN):
+            return FakeResponse(302, headers={"location": "/Home"})
+        return FakeResponse(404)
+
+    def get(self, url, **kw):
+        return FakeResponse(200, EP_CARDS) if url.endswith("/Home") else FakeResponse(404, "not here")
+
+
+def ep_client():
+    return platform.Platform(platform.EP_BASE_URL, FakeEPSession())
+
+
+def fake_platform(login_status=302):
+    return lambda base_url=platform.BASE_URL: RealPlatform(
+        base_url, FakeEPSession() if base_url == platform.EP_BASE_URL else FakeSession(login_status=login_status))
+
+
 def test_platform_parsers():
     assert [a["name"] for a in platform.parse_accounts(OVERVIEW)] == ["EasyEquities ZAR", "EasyProperties ZAR", "Demo ZAR"]
     rows = platform.parse_holdings(HOLDINGS["111"])
@@ -168,11 +195,15 @@ def test_platform_parsers():
 
 
 def test_snapshot_and_login_failure():
-    snap = platform.snapshot("u", "p", client=platform.Platform(session=FakeSession()))
+    snap = platform.snapshot("u", "p", client=platform.Platform(session=FakeSession()), ep_client=ep_client())
     eq, prop = snap["accounts"]  # the demo account is skipped
     assert snap["statement_links"] == ["/Statements/Index"]
     assert eq["value"] == 1100.0 and eq["holdings"][0]["shares"] == 1.0068
-    assert prop["holdings"][0]["name"] == "The Edge" and prop["value"] == 1100.0
+    # EasyProperties holdings come from the EasyProperties site; the account = wallet cash + properties.
+    assert [h["name"] for h in prop["holdings"]] == ["The Edge", "Four on O - Sea Point"]
+    assert prop["holdings"][1]["purchase_value"] == pytest.approx(198.01 - 50.69)
+    assert prop["value"] == pytest.approx(1100.0 - 95.0 + 117.74 + 198.01)
+    assert snap["easyproperties"]["source"] == "/Home"
     with pytest.raises(platform.PlatformError) as e:
         platform.snapshot("u", "bad", client=platform.Platform(session=FakeSession(login_status=200)))
     assert e.value.stage == "login"
@@ -183,7 +214,9 @@ def test_snapshot_and_login_failure():
 
 def test_account_switch_that_does_not_stick_is_not_copied(monkeypatch):
     monkeypatch.setitem(HOLDINGS, "222", HOLDINGS["111"])
-    snap = platform.snapshot("u", "p", client=platform.Platform(session=FakeSession()))
+    broken_ep = platform.Platform(platform.EP_BASE_URL, FakeSession(login_status=200))
+    snap = platform.snapshot("u", "p", client=platform.Platform(session=FakeSession()), ep_client=broken_ep)
+    assert "EasyProperties login" in snap["easyproperties"]["error"] or "login" in snap["easyproperties"]["error"]
     prop = snap["accounts"][1]
     assert prop["holdings"] == [] and "previous account" in prop["warnings"][0]
 
@@ -213,7 +246,7 @@ def market(monkeypatch):
 
     monkeypatch.setattr(prices, "fetch", fake_fetch)
     monkeypatch.setattr(mail, "fetch", lambda *a, **k: (fake_messages(), 9, "1"))
-    monkeypatch.setattr(platform, "Platform", lambda base_url=platform.BASE_URL: RealPlatform(base_url, FakeSession()))
+    monkeypatch.setattr(platform, "Platform", fake_platform())
 
 
 def test_connect_sync_and_portfolio(market):
@@ -242,9 +275,12 @@ def test_connect_sync_and_portfolio(market):
     aip = next(x for x in s["holdings"] if x["symbol"] == "AIP.JO")
     assert aip["price"] == 52.0 and aip["price_source"].startswith("EasyEquities") and aip["account"] == "EasyEquities ZAR"
     assert aip["value"] == 1050.0 and aip["quantity"] == 1.0068
-    assert s["easyequities"]["value"] == 2200.0
+    ep_total = 117.74 + 198.01
+    assert s["easyequities"]["value"] == pytest.approx(2200.0 - 95.0 + ep_total)
     assert s["cash"] == 2200.0 - 1050.0 - 95.0  # wallet cash = account value - holdings
-    assert s["value"] == pytest.approx(2200.0 + 87.2068 * 1.0)  # + The Edge from email (no platform price match)
+    # The Edge bought by email is the same holding as the EasyProperties card, so it's counted once.
+    assert [x["symbol"] for x in s["holdings"]].count("EE:THEEDGE") == 1
+    assert s["value"] == pytest.approx(1050.0 + ep_total + s["cash"])
     assert s["invested"] == 1676.0  # the email deposit (Gmail history wins over the statement when both exist)
 
     assert s["income"] == {"dividend": 2.5, "interest": 0.0, "fee": 1.15, "tax": 0.0}
@@ -284,8 +320,7 @@ def test_statement_categories(action, comment, cat):
 def test_failed_sync_keeps_last_snapshot(market, monkeypatch):
     h = register("eeuser")
     api.put("/api/ee/platform", headers=h, json={"username": "me", "password": "secret"})
-    monkeypatch.setattr(platform, "Platform",
-                        lambda base_url=platform.BASE_URL: RealPlatform(base_url, FakeSession(login_status=200)))
+    monkeypatch.setattr(platform, "Platform", fake_platform(login_status=200))
     body = api.post("/api/ee/sync", headers=h).json()
     assert body["platform"]["status"] == "error" and body["platform"]["error_stage"] == "login"
     assert len(body["accounts"]) == 2  # still showing the last good read

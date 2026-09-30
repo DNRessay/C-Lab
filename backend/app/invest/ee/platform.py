@@ -15,6 +15,8 @@ except ImportError:  # pragma: no cover
     SESSION_KW = {}
 
 BASE_URL = "https://platform.easyequities.io"
+EP_BASE_URL = "https://platform.easyproperties.co.za"  # EasyProperties runs its own platform; same login
+EP_PAGES = ["", "/AccountOverview", "/Portfolio", "/MyProperties", "/Invest/MyProperties", "/Properties/MyProperties"]
 SIGN_IN = "/Account/SignIn"
 OVERVIEW = "/AccountOverview"
 SWITCH_ACCOUNT = "/Menu/UpdateCurrency"
@@ -104,6 +106,41 @@ def parse_shares(page):
     return w + (float(f if f.startswith(".") else "0." + f) if f else 0.0)
 
 
+def _amount_after(label, text):
+    m = re.search(label + r"\s*:?\s*(-?\s*R?\s*-?[\d ,]*\.?\d+)", text, re.I)
+    return money(m.group(1)) if m else None
+
+
+def parse_property_cards(page):
+    """'My Properties' cards: name, CURRENT VALUE R x, RENTAL YIELD y%, VALUATION CHG R z (text-based, layout-proof)."""
+    text = _text(BeautifulSoup(page, "html.parser"))
+    parts = re.split(r"(?i)current value", text)
+    cards = []
+    for i in range(1, len(parts)):
+        before, body = parts[i - 1], parts[i]
+        # The card name is whatever sits just before "CURRENT VALUE": after the previous card's numbers/headings.
+        tail = re.split(r"(?i)valuation chg\s*:?\s*-?\s*R?\s*-?[\d ,]*\.?\d+%?|my properties|rental yield\s*[\d.]+%", before)[-1]
+        name = re.sub(r"\s+", " ", tail).strip(" -|")[-80:].strip()
+        value = _amount_after(r"^\s*(?:rental yield\s*[\d.]+\s*%)?", body)
+        if value is None:
+            value = money(re.search(r"R\s*[\d ,]*\.?\d+", body).group(0)) if re.search(r"R\s*[\d ,]*\.?\d+", body) else None
+        yld = re.search(r"(?i)rental yield\s*:?\s*(-?[\d.]+)\s*%", body)
+        chg = _amount_after(r"(?i)valuation chg", body)
+        if name and value is not None:
+            cards.append({"name": name, "contract_code": "", "current_value": value, "current_price": None,
+                          "purchase_value": round(value - chg, 2) if chg is not None else None,
+                          "rental_yield": float(yld.group(1)) / 100 if yld else None, "view_url": "", "isin": "",
+                          "shares": None})
+    return cards
+
+
+def discover(page):
+    """Links and API-looking paths on a page, for learning a changed/unknown layout. No values, just paths."""
+    paths = set(re.findall(r"""(?:href|src|action)=["'](/[^"'#?]{1,120})""", page))
+    paths |= set(re.findall(r"""["'](/api/[^"']{1,120})["']""", page))
+    return sorted(p for p in paths if not re.search(r"\.(png|jpg|svg|css|ico|woff2?)$", p))[:60]
+
+
 def statement_links(page):
     """Paths on the overview page that look like statements/reports (to learn where printable statements live)."""
     found = set(re.findall(r"""(?:href|action|data-[\w-]*url)=["']([^"']*(?:[Ss]tatement|[Rr]eport|[Tt]ax[Cc]ert)[^"']*)["']""", page))
@@ -117,6 +154,7 @@ class Platform:
         self.s = session or http.Session(**SESSION_KW)
         self.current = None
         self.statement_links = []
+        self.landing = ""
 
     def _url(self, path):
         return self.base_url + path
@@ -143,6 +181,7 @@ class Platform:
             hint = "wrong username/password, or EasyEquities now asks for a one-time PIN"
             raise PlatformError("login", f"not accepted (HTTP {r.status_code}: {hint})", r.text)
         location = r.headers.get("location", "") or ""
+        self.landing = location if location.startswith("/") else ""
         if "signin" in location.lower() or "otp" in location.lower() or "verify" in location.lower():
             raise PlatformError("login", f"redirected to {location} (password rejected or extra verification needed)")
 
@@ -221,7 +260,7 @@ def valuation_total(valuation):
     return None
 
 
-def snapshot(username, password, base_url=BASE_URL, client=None):
+def snapshot(username, password, base_url=BASE_URL, client=None, ep_client=None):
     """Log in and read every account. Raises PlatformError; returns a JSON-safe dict."""
     p = client or Platform(base_url)
     p.login(username, password)
@@ -247,4 +286,52 @@ def snapshot(username, password, base_url=BASE_URL, client=None):
         item["holdings_value"] = holdings_value
         item["purchase_value"] = sum(h["purchase_value"] or 0 for h in item["holdings"])
         out.append(item)
-    return {"accounts": out, "statement_links": p.statement_links}
+    snap = {"accounts": out, "statement_links": p.statement_links}
+    try:
+        ep = easyproperties(username, password, client=ep_client)
+    except PlatformError as e:
+        ep = {"holdings": [], "error": str(e), "discovery": discover(e.page) if e.page else []}
+    snap["easyproperties"] = {k: v for k, v in ep.items() if k != "holdings"}
+    if ep["holdings"]:
+        wallet = next((a for a in out if "properties" in a["name"].lower()), None)
+        if wallet is None:
+            wallet = {"id": "easyproperties", "name": "EasyProperties ZAR", "currency_id": "", "valuation": None,
+                      "transactions": [], "warnings": [], "value": 0.0, "holdings_value": 0.0, "purchase_value": 0.0}
+            out.append(wallet)
+        cash = max((wallet.get("value") or 0) - (wallet.get("holdings_value") or 0), 0.0)
+        wallet["holdings"] = ep["holdings"]
+        wallet["warnings"] = [w for w in wallet["warnings"] if "previous account" not in w]
+        wallet["holdings_value"] = sum(h["current_value"] or 0 for h in ep["holdings"])
+        wallet["purchase_value"] = sum(h["purchase_value"] or 0 for h in ep["holdings"])
+        wallet["value"] = wallet["holdings_value"] + cash
+    return snap
+
+
+def easyproperties(username, password, base_url=EP_BASE_URL, client=None):
+    """Your properties from the EasyProperties platform. Tries the EasyEquities-style pages, then 'My Properties' cards."""
+    p = client or Platform(base_url)
+    p.login(username, password)
+    tried = []
+    try:
+        for acc in p.accounts():
+            if not is_demo(acc["name"]):
+                rows = p.holdings(acc["id"], with_shares=False)
+                if rows:
+                    return {"holdings": rows, "source": "holdings view", "tried": tried}
+    except PlatformError as e:
+        tried.append(f"accounts: {e.message}")
+    pages = [p.landing] + EP_PAGES if getattr(p, "landing", "") else EP_PAGES
+    discovered = []
+    for path in dict.fromkeys(pages):
+        try:
+            r = p._get("easyproperties", path or "/")
+        except PlatformError as e:
+            tried.append(f"{path or '/'}: {e.message}")
+            continue
+        cards = parse_property_cards(r.text)
+        if cards:
+            return {"holdings": cards, "source": path or "/", "tried": tried}
+        tried.append(f"{path or '/'}: no property cards")
+        discovered = discovered or discover(r.text)
+    return {"holdings": [], "error": "could not find your properties on the EasyProperties site", "tried": tried,
+            "discovery": discovered}

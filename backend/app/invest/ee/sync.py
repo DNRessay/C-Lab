@@ -56,10 +56,10 @@ def rand_rate(db: Session, currency: str, day: date = None):
 
 # ── Platform ────────────────────────────────────────────────────────────────
 
-def sync_platform(db: Session, conn: EEConnection, client=None):
+def sync_platform(db: Session, conn: EEConnection, client=None, ep_client=None):
     conn.platform_tried_at = utcnow()
     try:
-        snap = platform.snapshot(conn.username, unseal(conn.password), client=client)
+        snap = platform.snapshot(conn.username, unseal(conn.password), client=client, ep_client=ep_client)
     except platform.PlatformError as e:
         conn.platform_status, conn.platform_error, conn.platform_error_stage = "error", e.message, e.stage
         conn.platform_debug = e.page
@@ -78,6 +78,7 @@ def sync_platform(db: Session, conn: EEConnection, client=None):
         log.info("EasyEquities sync ok for user %s: %s", conn.user_id,
                  [(a.get("name"), len(a.get("holdings", [])), a.get("warnings", [])) for a in snap["accounts"]])
         log.info("EasyEquities statement links: %s", snap.get("statement_links"))
+        log.info("EasyProperties: %s", snap.get("easyproperties"))
     db.commit()
     return conn.platform_status == "ok"
 

@@ -106,6 +106,7 @@ def summary(db: Session, user_id: int):
             "price": h["price_zar"], "price_source": f"EasyEquities ({taken[:10]})", "value": h["value_zar"],
             "gain": h["gain_zar"], "gain_pct": (h["value_zar"] / h["cost_zar"] - 1) if h["cost_zar"] else None,
             "realised": float(extra.get("realised", 0)), "dividends": float(extra.get("dividends", 0)),
+            "rental_yield": h.get("rental_yield"),
         })
         total_value += h["value_zar"]
         total_cost += h["cost_zar"]
