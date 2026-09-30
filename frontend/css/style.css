@@ -364,3 +364,10 @@ details.group-card h4 { margin: 0.6rem 0 0.4rem; font-size: 0.85rem; color: var(
 .modal-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 0.5rem; word-break: break-word; }
 .modal pre { white-space: pre-wrap; word-break: break-word; font-size: 0.78rem; color: var(--muted); max-height: 50vh; overflow: auto;
   background: var(--input); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; }
+.summary h3 { margin: 0 0 0.6rem; }
+.sum-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 0.4rem 1.2rem; margin: 0; }
+.sum-list > div { padding: 0.45rem 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.sum-list dt { color: var(--muted); font-size: 0.8rem; }
+.sum-list dd { margin: 0.1rem 0 0; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.sum-list dd small { display: block; font-weight: 400; font-size: 0.78rem; }
+.sum-note { margin: 0.75rem 0 0; line-height: 1.5; }

@@ -77,6 +77,8 @@ def test_bank_statements_from_gmail(monkeypatch):
     o = api.get("/api/bank", headers=h).json()
     acc = o["accounts"][0]
     assert (acc["account"], acc["kind"], acc["balance"], acc["balance_date"]) == ("Capitec ••9012", "bank", 19061.0, "2026-09-02")
+    assert acc["bank_name"] == "Capitec" and acc["last"]["description"].startswith("Uber")
+    assert acc["fees_12m"] == 9.0
     assert o["cash"] == 19061.0 and o["fees_12m"] == 9.0  # 1.50 on the Checkers line + 7.50 admin fee
     aug = next(m for m in o["months"] if m["month"] == "2026-08")
     assert aug["in"] == 20000.0 and aug["fees"] == 9.0

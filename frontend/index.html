@@ -25,6 +25,7 @@
         <thead><tr><th>Market</th><th class="num">Now</th><th>Last year</th><th class="num">Day</th><th class="num">Month</th><th class="num">Year</th><th class="num">52w range</th></tr></thead>
         <tbody id="market-rows" class="wrap-first"></tbody>
       </table></div>
+      <div id="sum-markets"></div>
       <p class="muted">Rand pairs show rand per 1 unit of the foreign currency, so a rising number means a weaker rand.</p>
     </section>
 
@@ -54,6 +55,7 @@
         </div>
       </div>
       <p class="muted" id="monthly-note"></p>
+      <div id="sum-overview"></div>
       <div id="ee-overview" hidden>
         <h2>EasyEquities accounts</h2>
         <div class="card"><div class="chart-box short"><canvas id="account-chart" aria-label="Value per EasyEquities account" role="img"></canvas></div></div>
@@ -136,6 +138,7 @@
           </div>
         </div>
       </div>
+      <div id="sum-holdings"></div>
       <div class="card table-wrap"><table>
         <thead><tr><th>Holding</th><th class="num">Units</th><th class="num">Avg cost</th><th class="num">Price</th><th class="num">Value</th><th class="num">Gain</th><th class="num">Dividends</th><th></th></tr></thead>
         <tbody id="holding-rows"></tbody>
@@ -170,6 +173,8 @@
           <div class="chart-box" id="acc-io-box"><canvas id="acc-io-chart" role="img" aria-label="Income and costs per account"></canvas></div>
         </div>
       </div>
+
+      <div id="sum-transactions"></div>
 
       <details class="section" id="sec-txns">
         <summary><span>Your transactions</span><span class="count" id="cnt-txns"></span></summary>
@@ -286,10 +291,12 @@
         <thead><tr><th>Symbol</th><th class="num">Price</th><th>Last year</th><th class="num">Day</th><th class="num">Month</th><th class="num">Year</th><th class="num">Div. yield</th><th class="num">52w range</th><th>Alerts</th><th></th></tr></thead>
         <tbody id="watch-rows"></tbody>
       </table></div>
+      <div id="sum-watchlist"></div>
     </section>
 
     <!-- Property -->
     <section id="property" hidden>
+      <div id="sum-property"></div>
       <div id="ep-wrap" hidden>
         <h2 style="margin-top:0">EasyProperties</h2>
         <div class="chart-grid">
@@ -376,9 +383,11 @@
         </div>
       </div>
 
-      <h2>Accounts</h2>
-      <p class="muted">Latest balance from each account's newest statement. Wrong type? Change it: credit cards and loans count as debt.</p>
-      <div class="grid" id="bank-accounts"></div>
+      <div id="sum-banking"></div>
+
+      <h2>Your banks</h2>
+      <p class="muted">Each account's standing is the balance on its latest transaction. Wrong type? Change it: credit cards and loans count as debt.</p>
+      <div id="bank-accounts"></div>
 
       <h2>Debts you add yourself</h2>
       <p class="muted">Car finance, a personal loan, store accounts, money you owe someone. Home loans go on the Property page (bond).</p>
@@ -441,6 +450,8 @@
       const s = await api.investSummary();
       renderEEOverview(s);
       renderBlog(s.blog);
+      summaryOverview(s);
+      summaryHoldings(s);
       renderCharts(s);
       renderHoldingCharts(s);
       api.investCharts().then(renderMonthly).catch(e => flash(e.message, "err"));
@@ -536,9 +547,12 @@
     $("#template").addEventListener("click", (e) => { e.preventDefault(); download(api.investTemplate(), "investments_template.csv").catch(err => flash(err.message, "err")); });
 
     // watchlist
+    let watchRows = null, picksOpen = null;
     async function loadWatch() {
       loadPicks().catch(e => flash(e.message, "err"));
       const rows = await api.watchlist();
+      watchRows = rows;
+      summaryWatch(rows, picksOpen);
       $("#watch-rows").innerHTML = rows.map(w => `<tr>
         <td><strong>${esc(w.symbol)}</strong><br><small class="muted">${esc(w.name)}</small></td>
         <td class="num">${w.price != null ? money(w.price) : badge("no price", "warn")}</td>
@@ -575,6 +589,7 @@
         const ep = s.holdings.filter(h => h.asset_class === "easyproperties");
         $("#ep-wrap").hidden = !ep.length;
         renderPropertyCharts(ep);
+        api.properties().then(own => summaryProperty(s, own)).catch(() => {});
         $("#ep-rows").innerHTML = ep.map(h => `<tr><td><strong>${esc(h.name)}</strong><br><small class="muted">${esc(h.account || h.symbol)}</small></td>
           <td class="num">${money(h.value)}</td><td class="num">${money(h.cost)}</td>
           <td class="num">${signed(h.gain)}<br><small>${pct(h.gain_pct)}</small></td>
@@ -624,6 +639,7 @@
         <td>${sparkline(m.spark, m.change_1y)}</td>
         ${pctCell(m.change_1d)}${pctCell(m.change_1m)}${pctCell(m.change_1y)}
         <td class="num"><small>${m.low_52w != null ? `${fmt(m, m.low_52w)} – ${fmt(m, m.high_52w)}` : ""}</small></td></tr>`).join("");
+      summaryMarkets(markets);
     }
 
     // account
@@ -1020,6 +1036,7 @@
       $("#stmt-acc").innerHTML = `<option value="">All accounts</option>` + accounts.map(a => `<option>${esc(a)}</option>`).join("");
       renderStatement();
       renderStatementCharts(stmt);
+      summaryTransactions(stmt);
       applySearch();
     }
 
@@ -1090,6 +1107,7 @@
       $("#bank-note").innerHTML = !st.google ? `Sign in with Google first (<a href="#google">Account ▸ Google</a>).`
         : `${st.ok} read · ${st.transactions} transactions${st.locked ? ` · ${st.locked} locked (${st.pdf_password_set ? "the saved PDF password didn't open them" : `set the PDF password on <a href="#easyequities">EasyEquities</a>, banks usually use your ID number too`})` : ""}${st.failed ? ` · ${st.failed} failed` : ""}`;
       $("#bank-read").disabled = !st.google;
+      summaryBanking(b);
 
       const own = s.value + (s.properties || []).reduce((a, p) => a + p.equity, 0);
       $("#bank-charts").hidden = !(b.accounts.length || b.liabilities.length || b.months.length);
@@ -1104,12 +1122,30 @@
           backgroundColor: css("--neg"), borderRadius: 4, borderSkipped: "start", maxBarThickness: 18 }] },
         options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip }, scales: barScales } });
 
-      $("#bank-accounts").innerHTML = b.accounts.map(a => `<div class="card${a.hidden ? " muted" : ""}">
-        <strong>${esc(a.name)}</strong><br><small class="muted">${a.balance_date ? `as at ${a.balance_date}` : "no balance yet"}</small>
-        <div class="value ${a.kind !== "bank" || a.balance < 0 ? "neg" : ""}" style="font-size:1.4rem;font-weight:700;margin:0.4rem 0">${money(a.balance)}</div>
+      const banks = {};
+      b.accounts.forEach(a => (banks[a.bank_name || a.bank] ||= []).push(a));
+      const accCard = (a) => `<div class="card${a.hidden ? " muted" : ""}">
+        <strong>${esc(a.name)}</strong> ${badge(ACC_KIND[a.kind] || a.kind, a.kind === "bank" ? "" : "warn")}
+        <div class="${a.kind !== "bank" || a.balance < 0 ? "neg" : ""}" style="font-size:1.4rem;font-weight:700;margin:0.4rem 0 0.1rem">${money(a.balance)}</div>
+        <small class="muted">${a.last ? `after ${esc(a.last.description)} (${signed(a.last.amount)}) on ${a.last.date}` : a.balance_date ? `as at ${a.balance_date}` : "no balance yet"}</small>
+        <p class="muted" style="margin:0.5rem 0"><small>12 months: in <span class="pos">${money(a.in_12m || 0)}</span> · out <span class="neg">${money(a.out_12m || 0)}</span> · fees ${money(a.fees_12m || 0)} · ${a.count_12m || 0} transactions</small></p>
         <div class="row"><select class="acc-kind" data-id="${a.id}">${Object.entries(ACC_KIND).map(([k, v]) => `<option value="${k}"${k === a.kind ? " selected" : ""}>${v}</option>`).join("")}</select>
-        <button class="secondary small acc-hide" data-id="${a.id}" data-h="${a.hidden ? "" : "1"}">${a.hidden ? "Count it" : "Leave out"}</button></div></div>`).join("")
-        || `<p class="muted">No bank statements read yet.</p>`;
+        <button class="secondary small acc-hide" data-id="${a.id}" data-h="${a.hidden ? "" : "1"}">${a.hidden ? "Count it" : "Leave out"}</button>
+        <button class="secondary small acc-txns" data-acc="${esc(a.account)}">Transactions</button></div></div>`;
+      $("#bank-accounts").innerHTML = Object.entries(banks).map(([bank, accs], i) => {
+        const counted = accs.filter(a => !a.hidden && a.balance != null);
+        const net = counted.reduce((t, a) => t + (a.kind === "bank" ? a.balance : -Math.abs(a.balance)), 0);
+        const latest = accs.map(a => a.last?.date).filter(Boolean).sort().pop();
+        return `<details class="section bank-group"${i === 0 ? " open" : ""}><summary><span>${esc(bank)} <small class="muted">${accs.length} account${accs.length === 1 ? "" : "s"}${latest ? ` · latest ${latest}` : ""}</small></span>
+          <span class="${net < 0 ? "neg" : "pos"}" style="font-weight:700">${money(net)}</span></summary>
+          <div class="grid">${accs.map(accCard).join("")}</div>
+          <div class="card table-wrap"><table><thead><tr><th>Date</th><th>What</th><th class="num">Amount</th><th class="num">Balance</th></tr></thead>
+          <tbody class="bank-recent" data-bank="${esc(bank)}"></tbody></table></div></details>`;
+      }).join("") || `<p class="muted">No bank statements read yet.</p>`;
+      $$(".acc-txns").forEach(el => el.addEventListener("click", () => {
+        $("#bank-acc").value = el.dataset.acc; renderBankRows();
+        $("#sec-bank-txns").open = true; $("#sec-bank-txns").scrollIntoView({ behavior: "smooth" });
+      }));
       $$(".acc-kind").forEach(el => el.addEventListener("change", async () => {
         try { await api.updateBankAccount(el.dataset.id, { kind: el.value }); loadBank(); } catch (e) { flash(e.message, "err"); }
       }));
@@ -1138,6 +1174,12 @@
       $("#bank-cat").innerHTML = `<option value="">All categories</option>` + [...new Set(bankRows.map(t => t.category))].sort().map(c => `<option>${esc(c)}</option>`).join("");
       $("#bank-acc").innerHTML = `<option value="">All accounts</option>` + [...new Set(bankRows.map(t => t.account))].map(c => `<option>${esc(c)}</option>`).join("");
       renderBankRows();
+      $$(".bank-recent").forEach(tb => {
+        const names = new Set(b.accounts.filter(a => (a.bank_name || a.bank) === tb.dataset.bank).map(a => a.account));
+        tb.innerHTML = bankRows.filter(t => names.has(t.account)).slice(0, 8).map(t => `<tr><td>${t.date}</td>
+          <td>${esc(t.description)} ${badge(t.category, t.category === "Bank fees" ? "warn" : "")}</td>
+          <td class="num">${signed(t.amount)}</td><td class="num">${t.balance != null ? money(t.balance) : ""}</td></tr>`).join("") || empty(4, "No transactions yet.");
+      });
       const stmts = await api.bankStatements();
       $("#cnt-bank-stmts").textContent = stmts.length;
       $("#bank-stmts").innerHTML = stmts.map(x => `<tr><td>${esc((x.received_at || "").slice(0, 10))}</td>
@@ -1203,6 +1245,8 @@
     async function loadPicks() {
       const b = await api.blog();
       const picks = b.upcoming.filter(d => d.can_buy);
+      picksOpen = picks.length;
+      if (watchRows) summaryWatch(watchRows, picksOpen);
       $("#picks-wrap").hidden = false;
       $("#cnt-picks").textContent = picks.length;
       $("#picks").innerHTML = picks.map((d, i) => `<tr><td>${esc(d.instrument)}<br><small class="muted">${esc(d.account)} account</small></td>
@@ -1221,6 +1265,131 @@
       flash(`Blog checked: ${r.read} new post(s).`);
       loadPicks();
     });
+
+    // Summary card under each tab's charts: the totals in words.
+    function summary(id, items, note = "") {
+      const shown = items.filter(Boolean);
+      $(id).innerHTML = shown.length ? `<div class="card summary"><h3>Summary</h3><dl class="sum-list">${shown.map(([k, v, sub]) =>
+        `<div><dt>${k}</dt><dd>${v}${sub ? `<small class="muted">${sub}</small>` : ""}</dd></div>`).join("")}</dl>${note ? `<p class="sum-note">${note}</p>` : ""}</div>` : "";
+    }
+    const pctOf = (a, b) => b ? `${(a / b * 100).toFixed(1)}%` : "—";
+    const top = (arr, key) => arr.length ? arr.reduce((a, b) => (b[key] > a[key] ? b : a)) : null;
+    const bottom = (arr, key) => arr.length ? arr.reduce((a, b) => (b[key] < a[key] ? b : a)) : null;
+
+    function summaryOverview(s) {
+      const alloc = Object.entries(s.allocation), total = alloc.reduce((a, [, v]) => a + v, 0);
+      const [bigK, bigV] = alloc[0] || [];
+      const inc = s.income ? s.income.dividend + s.income.interest : null, cost = s.income ? s.income.fee + s.income.tax : null;
+      const shares = s.holdings.filter(h => h.asset_class !== "easyproperties").length;
+      const b = s.banking || {};
+      summary("#sum-overview", [
+        ["Real net worth", `<strong>${money(s.net_worth)}</strong>`, "investments + property + bank − debt"],
+        ["Portfolio worth", money(s.value), `${shares} holdings${s.cash != null ? ` · ${money(s.cash)} cash` : ""}`],
+        ["Money put in", money(s.invested), s.since ? `since ${s.since}` : ""],
+        ["Gain", signed(s.gain), pct(s.return_pct)],
+        inc != null && ["Dividends + interest", money(inc), `dividends ${money(s.income.dividend)} · interest ${money(s.income.interest)}`],
+        cost != null && ["Fees + tax", `<span class="neg">${money(cost)}</span>`, `fees ${money(s.income.fee)} · tax ${money(s.income.tax)}`],
+        ["Property equity", money(s.property_equity), s.easyproperties_value ? `EasyProperties ${money(s.easyproperties_value)}` : ""],
+        (b.accounts || b.debt) && ["Bank", money(b.cash), `debt ${money(b.debt)} · bank fees ${money(b.fees_12m)} (12m)`],
+        bigK && ["Biggest slice", CLASS[bigK] || esc(bigK), `${money(bigV)} · ${pctOf(bigV, total)}`],
+      ], [
+        `You've put in ${money(s.invested)} and it's worth ${money(s.value)}, a ${s.gain < 0 ? "loss" : "gain"} of ${money(Math.abs(s.gain))} (${pct(s.return_pct)}).`,
+        inc != null ? `Fees and tax took ${money(cost)}, ${pctOf(cost, inc)} of the ${money(inc)} your dividends and interest paid.` : "",
+        b.debt ? `Debts of ${money(b.debt)} come off your net worth.` : "",
+      ].filter(Boolean).join(" "));
+    }
+
+    function summaryHoldings(s) {
+      const rows = s.holdings.filter(h => h.asset_class !== "easyproperties" && h.value > 0);
+      if (!rows.length) return summary("#sum-holdings", []);
+      const value = rows.reduce((a, h) => a + h.value, 0), cost = rows.reduce((a, h) => a + (h.cost || 0), 0);
+      const gain = rows.reduce((a, h) => a + (h.gain || 0), 0), divs = rows.reduce((a, h) => a + (h.dividends || 0), 0);
+      const big = top(rows, "value"), priced = rows.filter(h => h.gain_pct != null), best = top(priced, "gain_pct"), worst = bottom(priced, "gain_pct");
+      const byClass = {};
+      rows.forEach(h => byClass[h.asset_class] = (byClass[h.asset_class] || 0) + h.value);
+      const accounts = new Set(rows.map(h => h.account).filter(Boolean));
+      summary("#sum-holdings", [
+        ["Holdings", rows.length, accounts.size ? `across ${accounts.size} account(s)` : ""],
+        ["Worth", `<strong>${money(value)}</strong>`, `cost ${money(cost)}`],
+        ["Gain", signed(gain), pctOf(gain, cost)],
+        ["Dividends received", money(divs)],
+        ["Biggest", esc(big.name || big.symbol), `${money(big.value)} · ${pctOf(big.value, value)} of holdings`],
+        best && ["Best", esc(best.name || best.symbol), pct(best.gain_pct)],
+        worst && worst !== best && ["Worst", esc(worst.name || worst.symbol), pct(worst.gain_pct)],
+        ["Mix", Object.entries(byClass).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${CLASS[k] || esc(k)} ${pctOf(v, value)}`).join(" · ")],
+      ], `Your top holding is ${pctOf(big.value, value)} of what you hold${big.value / value > 0.25 ? ", a big bet on one name" : ""}.`);
+    }
+
+    function summaryTransactions(t) {
+      const acc = t.by_account || [], income = acc.reduce((a, x) => a + x.income, 0), costs = acc.reduce((a, x) => a + x.costs, 0);
+      const types = (t.cost_types || []).filter(x => x.amount > 0), bigCost = top(types, "amount"), bestAcc = top(acc, "income");
+      const dates = (t.rows || []).map(r => r.date).filter(Boolean).sort();
+      summary("#sum-transactions", [
+        ["Statement lines", (t.rows || []).length, dates.length ? `${dates[0]} to ${dates[dates.length - 1]}` : ""],
+        ["Dividends + interest", `<span class="pos">${money(income)}</span>`],
+        ["Fees + tax", `<span class="neg">${money(costs)}</span>`, income ? `${pctOf(costs, income)} of income` : ""],
+        ["Net from income", signed(income - costs)],
+        bigCost && ["Biggest cost", esc(bigCost.type), money(bigCost.amount)],
+        bestAcc && bestAcc.income > 0 && ["Top earning account", esc(bestAcc.account), money(bestAcc.income)],
+        t.reader && ["Statements read", `${t.reader.done ?? ""}${t.reader.total ? ` of ${t.reader.total}` : ""}`],
+      ], income ? `For every R100 of dividends and interest, R${(costs / income * 100).toFixed(2)} went to fees and tax.` : "");
+    }
+
+    function summaryBanking(b) {
+      const last12 = b.months.slice(-12), inn = last12.reduce((a, m) => a + m.in, 0), out = last12.reduce((a, m) => a + m.out, 0);
+      const cats = Object.entries(b.categories), [bigCat, bigAmt] = cats[0] || [];
+      summary("#sum-banking", [
+        ["In the bank", money(b.cash), `${b.accounts.filter(a => a.kind === "bank" && !a.hidden).length} account(s)`],
+        ["Debt", `<span class="neg">${money(b.debt)}</span>`, `${b.accounts.filter(a => a.kind !== "bank").length} card/loan · ${b.liabilities.length} added`],
+        ["Bank less debt", signed(b.cash - b.debt)],
+        last12.length && ["Money in", `<span class="pos">${money(inn)}</span>`, `${last12.length} month(s), transfers left out`],
+        last12.length && ["Money out", `<span class="neg">${money(out)}</span>`, `about ${money(out / last12.length)} a month`],
+        last12.length && ["Kept", signed(inn - out), inn ? `${pctOf(inn - out, inn)} of what came in` : ""],
+        ["Bank fees", `<span class="neg">${money(b.fees_12m)}</span>`, "last 12 months"],
+        bigCat && ["Biggest spend", esc(bigCat), `${money(bigAmt)} · ${pctOf(bigAmt, out)} of spending`],
+      ], last12.length ? `Over the last ${last12.length} month(s) you ${inn >= out ? "kept" : "spent"} ${money(Math.abs(inn - out))} ${inn >= out ? "of what came in" : "more than came in"}, and paid ${money(b.fees_12m)} in bank fees.` : "");
+    }
+
+    function summaryProperty(s, own) {
+      const ep = s.holdings.filter(h => h.asset_class === "easyproperties");
+      const epV = ep.reduce((a, h) => a + h.value, 0), epC = ep.reduce((a, h) => a + h.cost, 0), rent = ep.reduce((a, h) => a + (h.rental_income || 0), 0);
+      const yields = ep.filter(h => h.rental_yield != null), avgY = yields.length ? yields.reduce((a, h) => a + h.rental_yield * h.value, 0) / yields.reduce((a, h) => a + h.value, 0) : null;
+      const val = own.reduce((a, p) => a + (p.valuation || 0), 0), bond = own.reduce((a, p) => a + (p.bond_balance || 0), 0);
+      const flow = own.reduce((a, p) => a + (p.monthly_cashflow || 0), 0);
+      summary("#sum-property", [
+        ep.length && ["EasyProperties", money(epV), `${ep.length} properties · cost ${money(epC)}`],
+        ep.length && ["EasyProperties gain", signed(epV - epC), pctOf(epV - epC, epC)],
+        ep.length && ["Rental income", money(rent), avgY != null ? `average yield ${(avgY * 100).toFixed(2)}%` : ""],
+        own.length && ["Own property", money(val), `${own.length} propert${own.length === 1 ? "y" : "ies"}`],
+        own.length && ["Bond owing", `<span class="neg">${money(bond)}</span>`],
+        own.length && ["Equity", money(val - bond), `cash flow ${money(flow)} a month`],
+        ["All property equity", `<strong>${money(s.property_equity)}</strong>`],
+      ], !(ep.length || own.length) ? "Add a property or connect EasyEquities to see this."
+        : s.net_worth > 0 ? `Property is ${pctOf(s.property_equity, s.net_worth)} of your net worth.` : "");
+    }
+
+    function summaryWatch(rows, picks) {
+      if (!rows.length && !picks) return summary("#sum-watchlist", []);
+      const priced = rows.filter(w => w.change_1y != null), best = top(priced, "change_1y"), worst = bottom(priced, "change_1y");
+      const yields = rows.filter(w => w.dividend_yield != null), hy = top(yields, "dividend_yield");
+      summary("#sum-watchlist", [
+        ["Watching", rows.length, `${rows.filter(w => w.alert_below != null || w.alert_above != null).length} with alerts`],
+        best && ["Best year", esc(best.symbol), pct(best.change_1y)],
+        worst && worst !== best && ["Worst year", esc(worst.symbol), pct(worst.change_1y)],
+        hy && ["Highest yield", esc(hy.symbol), `${(hy.dividend_yield * 100).toFixed(1)}%`],
+        picks != null && ["Dividend picks open", picks, "from EasyEquities' blog"],
+      ]);
+    }
+
+    function summaryMarkets(markets) {
+      const m = markets.filter(x => x.change_1d != null), up = m.filter(x => x.change_1d > 0).length;
+      const y = markets.filter(x => x.change_1y != null), best = top(y, "change_1y"), worst = bottom(y, "change_1y");
+      summary("#sum-markets", [
+        ["Today", `${up} up · ${m.length - up} down`],
+        best && ["Best year", esc(best.label), pct(best.change_1y)],
+        worst && ["Worst year", esc(worst.label), pct(worst.change_1y)],
+      ]);
+    }
 
     // pages
     const LOAD = { markets: loadMarkets, overview: loadSummary, easyequities: loadEE, google: loadEE, holdings: loadSummary,

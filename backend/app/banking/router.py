@@ -2,7 +2,9 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from datetime import timedelta
+
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from ..deps import current_user, get_db
@@ -14,8 +16,23 @@ from .models import BankAccount, BankStatement, BankTxn, Liability
 router = APIRouter(prefix="/api/bank", tags=["banking"])
 
 
-def _account(a: BankAccount):
-    return {"id": a.id, "bank": a.bank, "account": a.account, "name": a.name, "kind": a.kind, "hidden": a.hidden,
+def _account(a: BankAccount, db: Session = None):
+    extra = {}
+    if db is not None:
+        last = db.scalar(select(BankTxn).where(BankTxn.user_id == a.user_id, BankTxn.account == a.account)
+                         .order_by(BankTxn.date.desc(), BankTxn.id.desc()))
+        since = utcnow().date() - timedelta(days=365)
+        row = db.execute(select(func.coalesce(func.sum(case((BankTxn.amount > 0, BankTxn.amount), else_=0)), 0),
+                                func.coalesce(func.sum(case((BankTxn.amount < 0, -BankTxn.amount), else_=0)), 0),
+                                func.coalesce(func.sum(BankTxn.fee), 0), func.count(),
+                                func.coalesce(func.sum(case(((BankTxn.category == "Bank fees") & (BankTxn.fee == 0) &
+                                                             (BankTxn.amount < 0), -BankTxn.amount), else_=0)), 0))
+                         .where(BankTxn.user_id == a.user_id, BankTxn.account == a.account, BankTxn.date >= since)).one()
+        extra = {"bank_name": reader.NAMES.get(a.bank, a.bank.title() or "Other"),
+                 "last": {"date": last.date.isoformat(), "description": last.description, "amount": last.amount,
+                          "balance": last.balance} if last else None,
+                 "in_12m": round(row[0], 2), "out_12m": round(row[1] + row[2], 2), "fees_12m": round(row[2] + row[4], 2), "count_12m": row[3]}
+    return {**extra, "id": a.id, "bank": a.bank, "account": a.account, "name": a.name, "kind": a.kind, "hidden": a.hidden,
             "balance": a.balance, "balance_date": a.balance_date.isoformat() if a.balance_date else None}
 
 
@@ -28,7 +45,7 @@ def _liability(m: Liability):
 def overview(user: User = Depends(current_user), db: Session = Depends(get_db)):
     pos = reader.position(db, user.id)
     return {"status": reader.status(db, user.id), "cash": pos["cash"], "debt": pos["debt"], "fees_12m": pos["fees_12m"],
-            "accounts": [_account(a) for a in pos["accounts"]], "liabilities": [_liability(m) for m in pos["liabilities"]],
+            "accounts": [_account(a, db) for a in pos["accounts"]], "liabilities": [_liability(m) for m in pos["liabilities"]],
             **reader.charts(db, user.id)}
 
 
