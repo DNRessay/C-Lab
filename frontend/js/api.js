@@ -117,6 +117,7 @@ export const api = {
   emailSend: () => post("/api/onboarding/email/send"),
   emailVerify: (code) => post("/api/onboarding/email/verify", { code }),
   report: (start, end) => get(`/api/reports?start=${start}&end=${end}`),
+  reportAI: (start, end) => get(`/api/reports/ai?start=${start}&end=${end}`),
   aiStatus: () => get("/api/ai/status"),
   aiSuggestions: (section, refresh) => get(`/api/ai/suggestions/${section}${refresh ? "?refresh=true" : ""}`),
   aiChats: () => get("/api/ai/chats"),

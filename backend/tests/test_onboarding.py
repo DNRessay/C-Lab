@@ -73,6 +73,15 @@ def test_signup_onboarding_and_report(market, monkeypatch):
     assert rep["period"] == {"start": "2026-01-01", "end": "2026-09-30", "months": 9}
     assert {"net_worth", "investments", "banking", "insights", "property"} <= rep.keys()
     assert api.get("/api/reports?start=nope", headers=h).status_code == 400
+    from app.ai import llm
+    from app.config import settings
+    monkeypatch.setattr(settings, "groq_api_keys", ["g"])
+    seen = []
+    monkeypatch.setattr(llm, "groq", lambda messages, max_tokens=900, json_mode=False: seen.append(messages) or
+                        '{"points": [{"title": "Spending beat income", "detail": "R100 more out than in.", "level": "high"}]}')
+    a = api.get("/api/reports/ai?start=2026-01-01&end=2026-09-30", headers=h).json()
+    assert a["items"][0]["level"] == "high" and not a["cached"] and '"net_worth"' in seen[0][1]["content"]
+    assert api.get("/api/reports/ai?start=2026-01-01&end=2026-09-30", headers=h).json()["cached"] and len(seen) == 1
     db.query(BankStatement).filter(BankStatement.user_id == uid).delete()
     db.query(EEConnection).filter(EEConnection.user_id == uid).delete()
     db.query(EESetting).filter(EESetting.user_id == uid).delete()

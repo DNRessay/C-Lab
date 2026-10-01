@@ -1,16 +1,31 @@
 # A finance report for any period: net worth, investments, income vs spending, categories, merchants, fees,
 # dividends, debt, property and insights. Built only from data C-Lab already has (no API calls).
+import hashlib
+import json
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import JSON, DateTime, ForeignKey, select
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
+from .db import Base
 from .deps import current_user, get_db
-from .models import User, utcnow
+from .models import BigId, User, pk, text, utcnow
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
+
+
+class ReportInsight(Base):
+    """AI read of one report. Keyed by a hash of the figures: same numbers, same answer, no new AI call."""
+
+    __tablename__ = "report_insights"
+    id: Mapped[int] = pk()
+    user_id: Mapped[int] = mapped_column(BigId, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    key: Mapped[str] = text(64)
+    items: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, default=utcnow, nullable=True)
 
 
 def _r(v):
@@ -155,3 +170,36 @@ def report(start: str = "", end: str = "", user: User = Depends(current_user), d
         "insights": insights(s, bank, inv, money),
         "ai": [{"title": i["title"], "detail": i["detail"]} for i in (ai.items if ai else [])][:5],
     }
+
+
+AI_SYSTEM = ("You read a South African's personal finance report for one period and explain what it means for them. "
+             'Reply with JSON only: {"points": [{"title": short, "detail": 1-2 sentences quoting their rand figures, '
+             '"level": "high"|"medium"|"low"}]}. 4 to 6 points, most important first: how net worth moved and why, '
+             "spending and saving, fees worth cutting, investment performance and concentration, debt, and one or two "
+             "concrete actions for next month. You are not a licensed financial adviser; don't recommend specific shares.")
+
+
+@router.get("/ai")
+def report_ai(start: str = "", end: str = "", user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from .ai.llm import AIError, groq, parse_json
+
+    r = report(start, end, user, db)
+    data = {k: r[k] for k in ("period", "net_worth", "investments", "debt", "property", "insights")}
+    data["banking"] = {k: v for k, v in r["banking"].items() if k != "biggest"}
+    blob = json.dumps(data, sort_keys=True, default=str)
+    key = hashlib.sha256(blob.encode()).hexdigest()
+    hit = db.scalar(select(ReportInsight).where(ReportInsight.user_id == user.id, ReportInsight.key == key))
+    if hit:
+        return {"items": hit.items, "cached": True}
+    try:
+        out = parse_json(groq([{"role": "system", "content": AI_SYSTEM}, {"role": "user", "content": blob}],
+                              max_tokens=900, json_mode=True)) or {}
+    except AIError as e:
+        raise HTTPException(503, str(e))
+    items = [{"title": str(p.get("title"))[:140], "detail": str(p.get("detail", ""))[:600],
+              "level": p.get("level") if p.get("level") in ("high", "medium", "low") else "medium"}
+             for p in (out.get("points") or []) if isinstance(p, dict) and p.get("title")][:6]
+    if items:
+        db.add(ReportInsight(user_id=user.id, key=key, items=items))
+        db.commit()
+    return {"items": items, "cached": False}

@@ -1916,7 +1916,7 @@
           <div><small>Investments</small><b>${money(inv.worth)}</b><small>${inv.return_pct}% all-time return</small></div>
         </section>
         <section><h2>Key insights</h2><ul class="rep-insights">${r.insights.map(i => `<li>${esc(i)}</li>`).join("") || "<li>Not enough data yet.</li>"}</ul>
-          ${r.ai.length ? `<h3>AI suggestions</h3><ol class="rep-insights">${r.ai.map(a => `<li><b>${esc(a.title)}</b>: ${esc(a.detail)}</li>`).join("")}</ol>` : ""}</section>
+          <div id="rep-ai"><h3>AI insights for this period</h3><p class="muted">Reading your numbers…</p></div></section>
         <section class="rep-grid">
           <div><h2>Net worth</h2>${tbl([row("Investments", money(nw.parts.investments)), row("Own property", money(nw.parts.own_property)),
             row("Bank", money(nw.parts.bank)), row("Debt", nw.parts.debt ? "−" + money(nw.parts.debt) : money(0), nw.parts.debt ? "neg" : ""), row("<b>Net worth</b>", `<b>${money(nw.now)}</b>`)])}
@@ -1946,6 +1946,14 @@
         borderColor: css("--series-1"), backgroundColor: css("--series-1"), borderWidth: 2, pointRadius: 2, tension: 0.25 }] },
         options: { maintainAspectRatio: false, animation: false, plugins: { legend: { display: false }, tooltip }, scales: { x: { grid: { display: false } }, y: { ticks: { callback: randTick, maxTicksLimit: 4 } } } } });
       upDownChart("#rep-io", b.months.map(x => x.month), b.months.map(x => x.in), b.months.map(x => x.out), "In", "Out");
+      const box = $("#rep-ai"), fallback = r.ai.map(a => ({ title: a.title, detail: a.detail }));
+      const show = (items, note) => {
+        box.innerHTML = `<h3>AI insights for this period</h3>${items.length ? `<ol class="rep-insights">${items.map(a => `<li><b>${esc(a.title)}</b>: ${esc(a.detail)}</li>`).join("")}</ol>` : ""}
+          <p class="muted"><small>${note}</small></p>`;
+      };
+      api.reportAI(r.period.start, r.period.end)
+        .then(a => show(a.items, `AI read of the figures above${a.cached ? " (saved)" : ""}. Not financial advice.`))
+        .catch(e => show(fallback, fallback.length ? `Couldn't read this period (${esc(e.message)}); showing your latest AI suggestions.` : esc(e.message)));
     }
 
     // pages
