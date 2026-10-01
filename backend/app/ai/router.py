@@ -4,7 +4,7 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import JSON, UniqueConstraint, select
+from sqlalchemy import JSON, Text, UniqueConstraint, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from ..config import settings
@@ -25,7 +25,21 @@ SECTIONS = {
     "property": "property: EasyProperties yields and gains, own property equity and bond",
     "watchlist": "dividends coming up from EasyEquities' updates and their watchlist: which look worth a closer look",
 }
-CACHE = timedelta(hours=24)
+CACHE = timedelta(hours=30)  # nightly warm-up keeps these fresh
+MIN_REFRESH = timedelta(hours=6)  # a manual refresh at most this often per tab
+CHAT_CACHE = timedelta(hours=12)
+
+
+class AIChatCache(Base):
+    """Answers to one-question chats (the starter questions), so tapping them again doesn't use the API."""
+
+    __tablename__ = "ai_chat_cache"
+    __table_args__ = (UniqueConstraint("user_id", "question"),)
+    id: Mapped[int] = pk()
+    user_id: Mapped[int] = user_fk()
+    question: Mapped[str] = text(300)
+    reply: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    created_at: Mapped[datetime] = created()
 
 
 class AISuggestion(Base):
@@ -60,24 +74,64 @@ def suggest(db: Session, user_id: int, section: str):
     return clean[:6]
 
 
-@router.get("/suggestions/{section}")
-def suggestions(section: str, refresh: bool = False, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    if section not in SECTIONS:
-        raise HTTPException(404, "Unknown section.")
-    row = db.scalar(select(AISuggestion).where(AISuggestion.user_id == user.id, AISuggestion.section == section))
-    if row and not refresh and utcnow() - row.created_at < CACHE:
-        return {"items": row.items, "created_at": row.created_at.isoformat(), "cached": True}
-    if not refresh and not row:
-        return {"items": [], "created_at": None, "cached": False, "available": bool(settings.cohere_api_key)}
-    try:
-        items = suggest(db, user.id, section)
-    except llm.AIError as e:
-        raise HTTPException(503, str(e))
-    row = row or AISuggestion(user_id=user.id, section=section)
+def _out(row):
+    return {"items": row.items, "created_at": row.created_at.isoformat(), "cached": True,
+            "next_refresh_at": (row.created_at + MIN_REFRESH).isoformat()}
+
+
+def save_suggestions(db: Session, user_id: int, section: str):
+    row = db.scalar(select(AISuggestion).where(AISuggestion.user_id == user_id, AISuggestion.section == section))
+    items = suggest(db, user_id, section)
+    row = row or AISuggestion(user_id=user_id, section=section)
     row.items, row.created_at = items, utcnow()
     db.add(row)
     db.commit()
-    return {"items": items, "created_at": row.created_at.isoformat(), "cached": False}
+    return row
+
+
+@router.get("/suggestions/{section}")
+def suggestions(section: str, refresh: bool = False, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Cached suggestions (made nightly). A refresh calls Cohere at most once every 6 hours per tab."""
+    if section not in SECTIONS:
+        raise HTTPException(404, "Unknown section.")
+    row = db.scalar(select(AISuggestion).where(AISuggestion.user_id == user.id, AISuggestion.section == section))
+    if row and (not refresh or utcnow() - row.created_at < MIN_REFRESH):
+        return _out(row)
+    if not refresh:
+        return {"items": [], "created_at": None, "cached": False, "available": bool(settings.cohere_api_key)}
+    try:
+        row = save_suggestions(db, user.id, section)
+    except llm.AIError as e:
+        raise HTTPException(503, str(e))
+    return {**_out(row), "cached": False}
+
+
+def warm_all(db: Session, deadline=None):
+    """Nightly: fresh suggestions for every tab of every user with data, so pages never wait on the API."""
+    from ..invest.ee.models import EEConnection
+
+    if not settings.cohere_api_key:
+        return 0
+    import time
+
+    made = 0
+    for uid in list(db.scalars(select(EEConnection.user_id))):
+        rows = {r.section: r for r in db.scalars(select(AISuggestion).where(AISuggestion.user_id == uid))}
+        for section in sorted(SECTIONS, key=lambda k: rows[k].created_at if k in rows else datetime.min):  # oldest first
+            if deadline and time.time() > deadline:
+                return made  # out of time tonight; the rest go first tomorrow
+            row = rows.get(section)
+            if row and utcnow() - row.created_at < timedelta(hours=20):
+                continue
+            try:
+                save_suggestions(db, uid, section)
+                made += 1
+            except llm.AIError:
+                db.rollback()
+                return made  # out of quota for now; the rest stay cached from before
+            except Exception:
+                db.rollback()
+    return made
 
 
 class Msg(BaseModel):
@@ -91,6 +145,12 @@ class ChatIn(BaseModel):
 
 @router.post("/chat")
 def chat(body: ChatIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    single = len(body.messages) == 1
+    q = body.messages[-1].content.strip()[:300]
+    if single:
+        hit = db.scalar(select(AIChatCache).where(AIChatCache.user_id == user.id, AIChatCache.question == q))
+        if hit and utcnow() - hit.created_at < CHAT_CACHE:
+            return {"reply": hit.reply, "cached": True}
     data = context.build(db, user.id)
     system = (llm.NOTE + " Answer in plain, short language (use lists when helpful). Here are their latest numbers "
               f"from C-Lab (JSON), use them:\n{json.dumps(data, default=str)}")
@@ -99,4 +159,10 @@ def chat(body: ChatIn, user: User = Depends(current_user), db: Session = Depends
         reply = llm.groq([{"role": "system", "content": system}, *history])
     except llm.AIError as e:
         raise HTTPException(503, str(e))
+    if single:
+        hit = db.scalar(select(AIChatCache).where(AIChatCache.user_id == user.id, AIChatCache.question == q))
+        hit = hit or AIChatCache(user_id=user.id, question=q)
+        hit.reply, hit.created_at = reply, utcnow()
+        db.add(hit)
+        db.commit()
     return {"reply": reply}

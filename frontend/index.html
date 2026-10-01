@@ -1579,10 +1579,11 @@
       try { r = await api.aiSuggestions(section, refresh); }
       catch (e) { box.innerHTML = `<div class="card ai-card"><h3>Suggestions</h3><p class="muted">${esc(e.message)}</p></div>`; return; }
       box.innerHTML = `<div class="card ai-card"><div class="ai-head"><h3>Suggestions</h3>
-        <button class="secondary small ai-go">${r.items.length ? "Refresh" : "Suggest improvements"}</button></div>
+        ${(() => { const wait = r.next_refresh_at && new Date(r.next_refresh_at + "Z") > new Date();
+          return `<button class="secondary small ai-go"${wait ? " disabled" : ""}>${!r.items.length ? "Suggest improvements" : wait ? `Refresh after ${new Date(r.next_refresh_at + "Z").toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })}` : "Refresh"}</button>`; })()}</div>
         ${r.items.length ? `<ol class="ai-list">${r.items.map(i => `<li><strong>${esc(i.title)}</strong> ${badge(...(IMPACT[i.impact] || IMPACT.medium))}
           ${i.value ? `<small class="muted"> · about ${money(i.value)} a year</small>` : ""}<br><span>${esc(i.detail)}</span></li>`).join("")}</ol>
-          <p class="muted"><small>From Cohere, ${day(r.created_at)}. Based on your totals; not financial advice.</small></p>`
+          <p class="muted"><small>From Cohere, ${day(r.created_at)} (made nightly, saved so it doesn't use your quota). Based on your totals; not financial advice.</small></p>`
         : `<p class="muted">Get ideas on this page's numbers, checked against your banking and investments together.</p>`}</div>`;
       $(".ai-go", box).addEventListener("click", () => loadSuggestions(section, true));
     }

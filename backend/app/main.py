@@ -1,5 +1,6 @@
 import logging
 import re
+import time
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -269,6 +270,14 @@ def handler(event, context):
                 result["blog"] = refresh(db)
             except Exception:
                 logging.exception("Nightly blog read failed")
+                db.rollback()
+            try:
+                from .ai.router import warm_all
+
+                left = context.get_remaining_time_in_millis() / 1000 if context else 240
+                result["ai_suggestions"] = warm_all(db, deadline=time.time() + left - 45)
+            except Exception:
+                logging.exception("Nightly AI suggestions failed")
                 db.rollback()
             result["alerts_sent"] = check_all(db)
             result["snapshots"] = record_all(db)

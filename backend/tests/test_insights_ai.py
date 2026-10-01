@@ -33,6 +33,9 @@ def test_suggestions_and_chat(market, monkeypatch):
                            "impact": "high", "value": 11700}]
     assert '"owing": 90000.0' in sent["prompt"] and "Car" not in sent["prompt"]  # debt amount, not the name
     assert api.get("/api/ai/suggestions/overview", headers=h).json()["cached"] is True
+    sent.clear()
+    assert api.get("/api/ai/suggestions/overview?refresh=true", headers=h).json()["cached"] is True  # too soon
+    assert not sent  # no API call
     assert api.get("/api/ai/suggestions/nope", headers=h).status_code == 404
 
     calls = []
@@ -52,3 +55,5 @@ def test_suggestions_and_chat(market, monkeypatch):
     r = api.post("/api/ai/chat", headers=h, json={"messages": [{"role": "user", "content": "How am I doing?"}]})
     assert r.json() == {"reply": "Your net worth is ..."}
     assert calls[0] != calls[1]  # rate-limited key, then the next one
+    again = api.post("/api/ai/chat", headers=h, json={"messages": [{"role": "user", "content": "How am I doing?"}]}).json()
+    assert again["cached"] is True and len(calls) == 2  # starter question answered from cache
