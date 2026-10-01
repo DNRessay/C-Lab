@@ -115,7 +115,9 @@ def test_bank_statements_from_gmail(monkeypatch):
 
 def test_bank_helpers():
     assert reader.bank_for("alerts@fnb.co.za") == "fnb"
-    assert reader.account_kind("Credit Card Statement  Credit limit R 20 000") == "credit"
+    assert reader.account_kind("Credit Card Statement  Credit limit R 20 000  Minimum payment due R 500") == "credit"
+    assert reader.account_kind("Fees: Credit card replacement R 50 · Debit card") == "bank"  # debit account fee table
+    assert reader.account_kind("Credit limit R 5 000") == "bank"  # a limit alone isn't a card statement
     assert reader.closing_balance("Opening balance 10.00\nClosing Balance   R 1 234.56 Dr") == -1234.56
     assert reader.categorise("POS Purchase Engen Garage") == "Transport"
     assert reader.categorise("Unknown thing", amount=50) == "Other income"

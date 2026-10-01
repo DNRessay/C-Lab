@@ -40,8 +40,12 @@ QUERY = "has:attachment filename:pdf (statement OR statements) from:(" + " OR ".
 
 ACCOUNT_RE = re.compile(r"(?:account|acc|card)\s*(?:number|no\.?|nr\.?|#)?\s*[:.]?\s*((?:\d[\d \-*x]{5,}\d))", re.I)
 CLOSING_RE = re.compile(r"closing\s+balance[^\d\-R]{0,30}(-?R?\s?-?[\d ,]+\.\d{2})\s*(cr|dr)?", re.I)
-CREDIT_CARD_RE = re.compile(r"credit\s+card|credit\s+limit|minimum\s+(amount\s+)?(payment\s+)?due", re.I)
+# A credit card statement shows a credit limit AND a minimum payment / amount due; a debit (bank) account statement
+# can mention "credit card" in a fee table, so one phrase alone isn't enough.
+CREDIT_LIMIT_RE = re.compile(r"credit\s+limit|available\s+credit", re.I)
+CREDIT_DUE_RE = re.compile(r"minimum\s+(amount\s+|payment\s+)*(due|payable)|total\s+amount\s+due|payment\s+due\s+date", re.I)
 LOAN_RE = re.compile(r"personal\s+loan|loan\s+account|home\s+loan|vehicle\s+finance|instal+ment\s+sale", re.I)
+LOAN_DUE_RE = re.compile(r"instal+ment|outstanding\s+(capital|balance)|settlement\s+amount", re.I)
 
 KNOWN = {"Income", "Savings", "Withdrawal", "Transfer", "Payments", "Cellphone", "Investments", "Fees", "Interest"}
 
@@ -77,12 +81,31 @@ def account_label(bank: str, text: str) -> str:
 
 
 def account_kind(text: str) -> str:
-    head = text[:4000]
-    if CREDIT_CARD_RE.search(head):
+    head = text[:5000]
+    if CREDIT_LIMIT_RE.search(head) and CREDIT_DUE_RE.search(head):
         return "credit"
-    if LOAN_RE.search(head):
+    if LOAN_RE.search(head) and LOAN_DUE_RE.search(head):
         return "loan"
     return "bank"
+
+
+def redetect_kinds(db: Session, user_id: int):
+    """Re-check every account's type from all its statements (most say what it is), unless you chose it yourself."""
+    from collections import Counter
+
+    votes = defaultdict(Counter)
+    for st in db.scalars(select(BankStatement).where(BankStatement.user_id == user_id, BankStatement.status == "ok")):
+        kind = account_kind(st.body)
+        st.kind = kind
+        votes[st.account][kind] += 1
+    changed = 0
+    for acc in db.scalars(select(BankAccount).where(BankAccount.user_id == user_id, BankAccount.kind_set.is_(False))):
+        kind = votes[acc.account].most_common(1)[0][0] if votes.get(acc.account) else "bank"
+        if kind != acc.kind:
+            acc.kind = kind
+            changed += 1
+    db.commit()
+    return changed
 
 
 def categorise(description: str, parsed: str = "", amount: float = 0.0, rules=()) -> str:

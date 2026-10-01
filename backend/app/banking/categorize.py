@@ -157,5 +157,8 @@ def ai_pass(db: Session, user_id: int, max_batches=10):
 
 
 def tidy(db: Session, user_id: int):
+    from .reader import redetect_kinds
+
+    redetect_kinds(db, user_id)
     changed = recategorise(db, user_id)
     return {"rules_and_keywords": changed, **ai_pass(db, user_id)}

@@ -231,6 +231,14 @@ def admin(event):
             db.query(AIChatCache).filter(AIChatCache.user_id == user.id).delete()
             db.commit()
             return {"ok": True, "made": warm_all(db, deadline=time.time() + 240)}
+        if event.get("action") == "bank_accounts":
+            from .banking.models import BankAccount
+            from .banking.reader import redetect_kinds
+
+            changed = redetect_kinds(db, user.id) if event.get("redetect") else 0
+            return {"ok": True, "changed": changed, "accounts": [
+                {"account": a.account[-8:], "bank": a.bank, "kind": a.kind, "kind_set": a.kind_set, "hidden": a.hidden,
+                 "balance": a.balance, "balance_date": str(a.balance_date)} for a in db.scalars(select(BankAccount).where(BankAccount.user_id == user.id))]}
         if event.get("action") == "tidy_bank":
             from .banking.categorize import tidy
 
