@@ -519,3 +519,4 @@ body.locked #nav, body.locked main > section { display: none !important; }
   .rep-grid > div, .report-doc section { break-inside: avoid; }
 }
 .ob-form[hidden] { display: none !important; }
+.onboard[hidden] { display: none !important; }
