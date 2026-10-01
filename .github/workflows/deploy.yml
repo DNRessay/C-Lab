@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: ${{ secrets.CLAB_DATABASE_URL || secrets.DATABASE_URL || secrets.NEON_DATABASE_URL }}
-      SIGNUP_EMAILS: ${{ vars.SIGNUP_EMAILS }}
+      SIGNUP_EMAILS: ${{ vars.SIGNUP_EMAILS || 'charlie@cthai.co.za' }}
       EMAIL_HOST: ${{ secrets.EMAIL_HOST }}
       EMAIL_HOST_USER: ${{ secrets.EMAIL_HOST_USER }}
       EMAIL_HOST_PASSWORD: ${{ secrets.EMAIL_HOST_PASSWORD }}
