@@ -111,6 +111,9 @@ export const api = {
   updateProperty: (id, b) => put(`/api/invest/properties/${id}`, b),
   deleteProperty: (id) => del(`/api/invest/properties/${id}`),
 
+  onboarding: () => get("/api/onboarding"),
+  onboardingId: (id_number) => put("/api/onboarding/id", { id_number }),
+  report: (start, end) => get(`/api/reports?start=${start}&end=${end}`),
   aiStatus: () => get("/api/ai/status"),
   aiSuggestions: (section, refresh) => get(`/api/ai/suggestions/${section}${refresh ? "?refresh=true" : ""}`),
   aiChats: () => get("/api/ai/chats"),

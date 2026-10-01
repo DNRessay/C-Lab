@@ -52,5 +52,6 @@ def init_db():
     from .banking import models as bank_models  # noqa: F401
     from .invest import blog, pulse  # noqa: F401
     from .ai import router as ai  # noqa: F401
+    from . import onboarding  # noqa: F401
 
     Base.metadata.create_all(engine)

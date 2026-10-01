@@ -20,6 +20,7 @@ class RegisterIn(BaseModel):
     last_name: str = ""
     email: str
     password: str
+    id_number: str = ""  # SA ID: checked here, stored sealed, reused for statement PDFs
 
 
 class LoginIn(BaseModel):
@@ -54,12 +55,23 @@ def register(body: RegisterIn, db: Session = Depends(get_db)):
         errors["email"] = ["An account with this email already exists."]
     if problems := password_problems(body.password, "", email):
         errors["password"] = problems
+    if body.id_number.strip():
+        from .onboarding import check_sa_id
+
+        try:
+            check_sa_id(body.id_number)
+        except ValueError as e:
+            errors["id_number"] = [str(e)]
     if errors:
         raise HTTPException(400, errors)
     user = User(email=email, first_name=body.first_name.strip(), last_name=body.last_name.strip(),
                 password=hash_password(body.password))
     db.add(user)
     db.commit()
+    if body.id_number.strip():
+        from .onboarding import save_id
+
+        save_id(db, user.id, body.id_number)
     return {"user": user_out(user), **token_pair(user.id)}
 
 
