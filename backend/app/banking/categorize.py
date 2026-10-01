@@ -92,9 +92,15 @@ def recategorise(db: Session, user_id: int):
     return changed
 
 
+# Words that appear on many unrelated lines: never a rule on their own.
+GENERIC = {"payment", "payments", "eft", "payshap", "transfer", "debit", "credit", "card", "pos", "purchase", "immediate",
+           "online", "send", "sent", "received", "money", "cash", "deposit", "fee", "fees", "shop", "store", "order",
+           "capitec", "tymebank", "gotyme", "fnb", "absa", "nedbank", "standard bank", "bank", "account", "ref"}
+
+
 def learn(db: Session, user_id: int, keyword: str, category: str, source: str):
-    keyword = keyword.strip().lower()
-    if len(keyword) < 3 or re.fullmatch(r"[\d\W]+", keyword):
+    keyword = re.sub(r"\d+$", "", keyword.strip().lower()).strip()  # 'slovosupermarket5' -> 'slovosupermarket'
+    if len(keyword) < 4 or keyword in GENERIC or re.fullmatch(r"[\d\W]+", keyword):
         return
     row = db.scalar(select(BankCategoryRule).where(BankCategoryRule.user_id == user_id, BankCategoryRule.keyword == keyword))
     if row and row.source == "you" and source == "ai":
@@ -102,6 +108,7 @@ def learn(db: Session, user_id: int, keyword: str, category: str, source: str):
     row = row or BankCategoryRule(user_id=user_id, keyword=keyword)
     row.category, row.source = category, source
     db.add(row)
+    db.flush()  # so the next lookup in this batch sees it
 
 
 def ai_pass(db: Session, user_id: int, max_batches=10):

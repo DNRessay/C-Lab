@@ -163,6 +163,15 @@ def test_categoriser_rules_and_ai(monkeypatch):
     other = [t for t in api.get("/api/bank/transactions", headers=h).json() if t["category"] in ("Other", "Other income")]
     monkeypatch.setattr(llm, "groq", lambda messages, max_tokens=900, json_mode=False: json.dumps(
         {"results": [{"i": i, "category": "Income", "confidence": 0.9, "keyword": "acme"} for i in range(len(other))]}))
+    from app.banking.categorize import learn
+    from app.banking.models import BankCategoryRule
+
+    learn(db, uid, "slovosupermarket5", "Groceries", "ai")
+    learn(db, uid, "slovosupermarket", "Groceries", "ai")  # same keyword twice in one batch
+    learn(db, uid, "payment", "Transfers", "ai")  # too generic
+    db.commit()
+    kws = {r.keyword for r in db.query(BankCategoryRule).filter(BankCategoryRule.user_id == uid)}
+    assert "slovosupermarket" in kws and "payment" not in kws
     out = api.post("/api/bank/categorise", headers=h).json()
     assert out["ai"] == len(other) and out["left"] == 0
     db.close()
