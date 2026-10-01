@@ -435,6 +435,16 @@
           <button type="submit">Change password</button>
         </form>
       </div>
+      <div class="card">
+        <h3>Connect apps</h3>
+        <p class="muted">Lets an assistant such as SEMBLANCE read your money here (read-only: it can't change anything or move money). Paste the address and key into the app. You can revoke a key any time.</p>
+        <div class="row"><input id="mcp-name" placeholder="Key name, e.g. SEMBLANCE" class="grow" /><button id="mcp-create" class="small">Create key</button></div>
+        <div id="mcp-new" hidden>
+          <p><b>Address</b> <code id="mcp-url"></code></p>
+          <p><b>Key</b> (shown once) <code id="mcp-key"></code></p>
+        </div>
+        <table><tbody id="mcp-keys"></tbody></table>
+      </div>
     </section>
     <!-- Banking -->
     <section id="banking" hidden>
@@ -562,6 +572,7 @@
   </main>
   <script type="module">
     import { api } from "/js/api.js";
+    import { API_BASE } from "/js/config.js";
     import { $, $$, action, amount, badge, day, download, empty, esc, flash, money, onSubmit, page, pct, setActive } from "/js/ui.js";
 
     const PAGES = [["markets", "Markets"], ["overview", "Portfolio"], ["holdings", "Holdings"], ["transactions", "Transactions"],
@@ -779,7 +790,27 @@
     async function loadAccount() {
       const me = await api.me();
       $("#who").textContent = `${me.first_name} ${me.last_name} · ${me.email}`;
+      renderKeys(await api.mcpKeys());
     }
+    function renderKeys(keys) {
+      $("#mcp-keys").innerHTML = keys.length ? keys.map(k =>
+        `<tr><td>${esc(k.name)} <small class="muted">…${esc(k.hint)}</small></td>` +
+        `<td><small class="muted">${k.last_used_at ? `used ${day(k.last_used_at)}` : "never used"}</small></td>` +
+        `<td><button class="secondary small" data-revoke="${k.id}">Revoke</button></td></tr>`).join("") : empty(3, "No keys yet.");
+      $$("[data-revoke]").forEach(b => action(b, async () => {
+        if (!confirm("Revoke this key? Apps using it stop working.")) return;
+        await api.mcpRevokeKey(b.dataset.revoke);
+        renderKeys(await api.mcpKeys());
+      }));
+    }
+    action($("#mcp-create"), async () => {
+      const k = await api.mcpCreateKey($("#mcp-name").value || "SEMBLANCE");
+      $("#mcp-url").textContent = `${API_BASE}/mcp`;
+      $("#mcp-key").textContent = k.key;
+      $("#mcp-new").hidden = false;
+      $("#mcp-name").value = "";
+      renderKeys(await api.mcpKeys());
+    });
     onSubmit($("#pw-form"), async (d, e) => { flash((await api.changePassword(d)).message); e.target.reset(); });
 
     // EasyEquities (connections page)

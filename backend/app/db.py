@@ -53,5 +53,6 @@ def init_db():
     from .invest import blog, pulse  # noqa: F401
     from .ai import router as ai  # noqa: F401
     from . import onboarding  # noqa: F401
+    from . import mcp  # noqa: F401
 
     Base.metadata.create_all(engine)

@@ -19,6 +19,7 @@ from .onboarding import router as onboarding_router
 from .reports import router as reports_router
 from .invest.ee.router import router as ee_router
 from .invest.router import router as invest_router
+from .mcp import keys_router as mcp_keys_router, router as mcp_router
 
 logging.getLogger().setLevel(logging.INFO)
 
@@ -55,7 +56,8 @@ async def unhandled(request: Request, exc: Exception):
     return JSONResponse({"detail": "Internal server error."}, status_code=500)
 
 
-for r in (auth.router, invest_router, markets.router, ee_router, bank_router, ai_router, onboarding_router, reports_router):
+for r in (auth.router, invest_router, markets.router, ee_router, bank_router, ai_router, onboarding_router, reports_router,
+          mcp_keys_router, mcp_router):
     app.include_router(r)
 
 

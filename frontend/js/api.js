@@ -87,6 +87,9 @@ export const api = {
   login: (email, password) => post("/api/auth/login", { email, password }),
   me: () => get("/api/auth/me"),
   changePassword: (b) => post("/api/auth/change-password", b),
+  mcpKeys: () => get("/api/mcp/keys"),
+  mcpCreateKey: (name) => post("/api/mcp/keys", { name }),
+  mcpRevokeKey: (id) => del(`/api/mcp/keys/${id}`),
 
   markets: () => get("/api/markets"),
   investSummary: () => get("/api/invest/summary"),
