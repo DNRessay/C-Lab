@@ -47,3 +47,7 @@ Every push to `main` runs `.github/workflows/deploy.yml`. It runs the tests, dep
 **Optional repo variable:** `SIGNUP_EMAILS`.
 
 The app secret key is created on the first deploy and kept in AWS SSM at `/c-lab/secret-key`.
+
+## License
+
+Proprietary. Copyright (c) 2026 VICINIC (Pty) Ltd. All rights reserved. Used by partner CT Holdings and Investments (Pty) Ltd under the licence in [LICENSE](LICENSE).
