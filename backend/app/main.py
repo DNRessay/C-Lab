@@ -162,6 +162,21 @@ def admin(event):
             return {"ok": True, "deposits": float(sum(a for _, a in flows if a > 0)),
                     "withdrawals": float(sum(-a for _, a in flows if a < 0)), "lines": len(rows),
                     "labels": labels.most_common(40)}
+        if event.get("action") == "ee_check":
+            # Account values vs their holdings, as EasyEquities sent them (no personal details).
+            from .invest.ee.models import EEConnection
+
+            conn = db.scalar(select(EEConnection).where(EEConnection.user_id == user.id))
+            out = []
+            for a in (conn.snapshot or {}).get("accounts", []):
+                top = (a.get("valuation") or {}).get("TopSummary") if isinstance(a.get("valuation"), dict) else None
+                out.append({"name": a.get("name"), "value": a.get("value"), "holdings_value": a.get("holdings_value"),
+                            "purchase_value": a.get("purchase_value"), "warnings": a.get("warnings"),
+                            "top_summary": {k: v for k, v in (top or {}).items() if not isinstance(v, (list, dict))},
+                            "account_values": (top or {}).get("AccountValues"),
+                            "holdings": [{k: h.get(k) for k in ("name", "contract_code", "shares", "quantity", "current_value",
+                                                                 "purchase_value", "current_price")} for h in a.get("holdings", [])][:30]})
+            return {"ok": True, "taken_at": (conn.snapshot or {}).get("taken_at"), "accounts": out}
         if event.get("action") == "blog_view":
             from .invest import blog
             from .invest.models import PriceCache, WatchItem

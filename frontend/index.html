@@ -1423,7 +1423,8 @@
         bigK && ["Biggest slice", CLASS[bigK] || esc(bigK), `${money(bigV)} · ${pctOf(bigV, total)}`],
       ], [
         `You've put in ${money(s.invested)} and it's worth ${money(s.value)}, a ${s.gain < 0 ? "loss" : "gain"} of ${money(Math.abs(s.gain))} (${pct(s.return_pct)}).`,
-        inc != null ? `Fees and tax took ${money(cost)}, ${pctOf(cost, inc)} of the ${money(inc)} your dividends and interest paid.` : "",
+        inc != null ? (cost > inc ? `Fees and tax (${money(cost)}) cost more than dividends and interest paid you (${money(inc)}).`
+          : `Fees and tax took ${money(cost)} of the ${money(inc)} your dividends and interest paid.`) : "",
         b.debt ? `Debts of ${money(b.debt)} come off your net worth.` : "",
       ].filter(Boolean).join(" "));
     }

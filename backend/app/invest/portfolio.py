@@ -194,7 +194,9 @@ def summary(db: Session, user_id: int):
     else:
         # Without a cash record, sells already reduce `invested`; only dividends left the portfolio as cash.
         received = sum(r["dividends"] for r in rows) if cash is None else 0.0
-    put_in = float(sum((a for _, a in flows if a > 0), ZERO)) if has_deposits or not ee_view else invested
+    # Return is measured on the money still in (deposits less withdrawals); gross deposits only if that's not positive.
+    gross = float(sum((a for _, a in flows if a > 0), ZERO)) if has_deposits or not ee_view else invested
+    put_in = invested if invested > 0 else gross
     benchmarks = []
     for symbol, label in prices.BENCHMARKS:
         v = what_if(db, flows, symbol)
