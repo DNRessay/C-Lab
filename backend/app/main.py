@@ -74,6 +74,19 @@ _asgi = Mangum(app, lifespan="off")
 
 # Lambda entrypoint: app.main.handler. The nightly EventBridge schedule calls it too:
 # EasyEquities sync first (so prices are fresh), then price alerts.
+def _numbers_only(v, depth=0):
+    """Valuation JSON with keys and numbers kept, text shortened and account numbers masked, for diagnosis."""
+    if depth > 4:
+        return "…"
+    if isinstance(v, dict):
+        return {k: _numbers_only(x, depth + 1) for k, x in list(v.items())[:40] if "number" not in k.lower()}
+    if isinstance(v, list):
+        return [_numbers_only(x, depth + 1) for x in v[:12]]
+    if isinstance(v, str):
+        return re.sub(r"\d{6,}", "#", v)[:60]
+    return v
+
+
 def admin(event):
     """Direct Lambda invokes only (AWS credentials needed; a Function URL request can't produce this event shape)."""
     from sqlalchemy import func, select
@@ -174,6 +187,7 @@ def admin(event):
                             "purchase_value": a.get("purchase_value"), "warnings": a.get("warnings"),
                             "top_summary": {k: v for k, v in (top or {}).items() if not isinstance(v, (list, dict))},
                             "account_values": (top or {}).get("AccountValues"),
+                            "valuation": _numbers_only(a.get("valuation")),
                             "holdings": [{k: h.get(k) for k in ("name", "contract_code", "shares", "quantity", "current_value",
                                                                  "purchase_value", "current_price")} for h in a.get("holdings", [])][:30]})
             return {"ok": True, "taken_at": (conn.snapshot or {}).get("taken_at"), "accounts": out}
