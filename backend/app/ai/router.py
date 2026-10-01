@@ -1,6 +1,7 @@
+import re
 import json
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -166,3 +167,94 @@ def chat(body: ChatIn, user: User = Depends(current_user), db: Session = Depends
         db.add(hit)
         db.commit()
     return {"reply": reply}
+
+
+# ── Conversations (the Ask AI app): kept on the server so they follow you between devices ─────────────────
+
+class AIConversation(Base):
+    __tablename__ = "ai_conversations"
+    id: Mapped[int] = pk()
+    user_id: Mapped[int] = user_fk()
+    title: Mapped[str] = text(120)
+    topic: Mapped[str] = text(20)  # the tab it started from, if any
+    messages: Mapped[list] = mapped_column(JSON, default=list, nullable=False)  # [{role, content, followups?}]
+    updated_at: Mapped[datetime] = created()
+
+
+TOPIC_HINT = {k: f"They opened this chat from the {k} page; focus on {v}." for k, v in SECTIONS.items()}
+FOLLOW_RE = re.compile(r"\n*\s*FOLLOW-?UPS?:\s*(.+?)\s*$", re.I | re.S)
+
+
+def _split_followups(text_: str):
+    m = FOLLOW_RE.search(text_ or "")
+    if not m:
+        return text_.strip(), []
+    ups = [q.strip(" -•*\"'") for q in re.split(r"\s*\|\s*|\n", m.group(1)) if q.strip(" -•*\"'")]
+    return text_[:m.start()].strip(), [q[:90] for q in ups if len(q) > 5][:3]
+
+
+def _conv_out(c: AIConversation, full=True):
+    out = {"id": c.id, "title": c.title or "New chat", "topic": c.topic, "updated_at": c.updated_at.isoformat(),
+           "count": len(c.messages or [])}
+    if full:
+        out["messages"] = c.messages or []
+    return out
+
+
+@router.get("/chats")
+def list_chats(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    rows = db.scalars(select(AIConversation).where(AIConversation.user_id == user.id)
+                      .order_by(AIConversation.updated_at.desc()).limit(50))
+    return [_conv_out(c, full=False) for c in rows]
+
+
+@router.get("/chats/{cid}")
+def get_chat(cid: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    c = db.get(AIConversation, cid)
+    if not c or c.user_id != user.id:
+        raise HTTPException(404, "Not found.")
+    return _conv_out(c)
+
+
+@router.delete("/chats/{cid}", status_code=204)
+def delete_chat(cid: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    c = db.get(AIConversation, cid)
+    if not c or c.user_id != user.id:
+        raise HTTPException(404, "Not found.")
+    db.delete(c)
+    db.commit()
+
+
+class SayIn(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+    chat_id: Optional[int] = None
+    topic: str = ""
+
+
+@router.post("/converse")
+def converse(body: SayIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """One turn of a saved conversation. Returns the reply and up to 3 follow-up questions to tap."""
+    c = db.get(AIConversation, body.chat_id) if body.chat_id else None
+    if c and c.user_id != user.id:
+        raise HTTPException(404, "Not found.")
+    if not c:
+        c = AIConversation(user_id=user.id, topic=body.topic if body.topic in SECTIONS else "", messages=[],
+                           title=body.message.strip()[:80])
+        db.add(c)
+    data = context.build(db, user.id)
+    system = (llm.NOTE + " Format answers in Markdown: short paragraphs, **bold** key numbers, bullet lists, and a small "
+              "table when comparing numbers. Keep it tight. End with one line exactly like: "
+              "FOLLOWUPS: question one | question two | question three (short questions they might ask next). "
+              + TOPIC_HINT.get(c.topic, "") + f"\nTheir latest numbers from C-Lab (JSON):\n{json.dumps(data, default=str)}")
+    history = [{"role": m["role"], "content": m["content"]} for m in (c.messages or [])[-12:]]
+    history.append({"role": "user", "content": body.message.strip()})
+    try:
+        raw = llm.groq([{"role": "system", "content": system}, *history], max_tokens=1200)
+    except llm.AIError as e:
+        raise HTTPException(503, str(e))
+    reply, followups = _split_followups(raw)
+    c.messages = [*(c.messages or []), {"role": "user", "content": body.message.strip()},
+                  {"role": "assistant", "content": reply, "followups": followups}]
+    c.updated_at = utcnow()
+    db.commit()
+    return {"chat_id": c.id, "title": c.title, "reply": reply, "followups": followups}

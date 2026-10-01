@@ -29,7 +29,7 @@
       <div id="pulse-markets"></div>
       <div id="blog-wrap" hidden>
         <h2>Dividends from EasyEquities</h2>
-        <p class="muted">Declared in EasyEquities' dividends updates. Own the share by the last day to trade to get paid. <span id="blog-note"></span></p>
+        <div class="callout info"><span class="cl-icon" aria-hidden="true">i</span><p><b class="cl-tag">Info</b> Declared in EasyEquities' dividends updates. Own the share by the last day to trade to get paid. <span id="blog-note"></span></p></div>
                 <div class="row" style="margin-bottom:0.6rem"><label class="muted" for="blog-sort">Sort by</label>
           <select id="blog-sort"><option value="date">Last day to trade</option><option value="yield">Yield (this dividend)</option>
             <option value="yield12">Yield (12 months)</option><option value="season">Season paid</option><option value="amount">Dividend amount</option></select></div>
@@ -55,7 +55,7 @@
         <h3>MACD histogram</h3>
         <div class="chart-box short"><canvas id="macd-chart" role="img" aria-label="MACD histogram"></canvas></div>
       </div>
-      <p class="muted">Rand pairs show rand per 1 unit of the foreign currency, so a rising number means a weaker rand.</p>
+      <div class="callout info"><span class="cl-icon" aria-hidden="true">i</span><p><b class="cl-tag">Info</b> Rand pairs show rand per 1 unit of the foreign currency, so a rising number means a weaker rand.</p></div>
     </section>
 
     <!-- Overview -->
@@ -117,7 +117,7 @@
       </div>
       <div id="my-divs-wrap" hidden>
         <h2>Your dividends</h2>
-        <p class="muted">From EasyEquities' dividends updates, for shares you hold or watch. The full list is on <a href="#markets">Markets</a>.</p>
+        <div class="callout info"><span class="cl-icon" aria-hidden="true">i</span><p><b class="cl-tag">Info</b> From EasyEquities' dividends updates, for shares you hold or watch. The full list is on <a href="#markets">Markets</a>.</p></div>
         <div class="grid" id="my-divs"></div>
       </div>
       <div id="decisions-wrap" hidden>
@@ -125,7 +125,7 @@
         <div class="card table-wrap"><table><tbody id="ee-actions"></tbody></table></div>
       </div>
       <h2>Same money, other choices</h2>
-      <p class="muted" id="bench-note"></p>
+      <div class="callout suggest"><span class="cl-icon" aria-hidden="true">i</span><p><b class="cl-tag">Suggestion</b> <span id="bench-note"></span></p></div>
       <div class="card table-wrap"><table>
         <thead><tr><th></th><th class="num">Worth now</th><th class="num">Gain</th><th class="num">Return</th></tr></thead>
         <tbody id="bench"></tbody>
@@ -140,7 +140,7 @@
       <div class="card" id="ee-status"></div>
         <div class="card">
           <h3>Connect EasyEquities</h3>
-          <p class="muted">Reads your accounts (including EasyProperties) and holdings at EasyEquities' own prices, every night and when you press Sync. Your password is stored encrypted and only used to read.</p>
+          <div class="callout info"><span class="cl-icon" aria-hidden="true">i</span><p><b class="cl-tag">Info</b> Reads your accounts (including EasyProperties) and holdings at EasyEquities' own prices, every night and when you press Sync. Your password is stored encrypted and only used to read.</p></div>
           <form id="ee-platform-form">
             <div class="field"><label>Username or email</label><input name="username" autocomplete="off" required /></div>
             <div class="field"><label>Password</label><input name="password" type="password" autocomplete="new-password" required /></div>
@@ -149,7 +149,7 @@
         </div>
       <div class="card">
         <h3>Statement password</h3>
-        <p class="muted">EasyEquities locks its PDF statements, usually with your ID number. C-Lab needs it to read them (stored encrypted, only used to open your statements). <span id="pdfpw-state"></span></p>
+        <div class="callout info"><span class="cl-icon" aria-hidden="true">i</span><p><b class="cl-tag">Info</b> EasyEquities locks its PDF statements, usually with your ID number. C-Lab needs it to read them (stored encrypted, only used to open your statements). <span id="pdfpw-state"></span></p></div>
         <form id="pdfpw-form" class="row">
           <input name="password" type="password" autocomplete="off" placeholder="PDF password" class="grow" />
           <button type="submit">Save</button>
@@ -162,12 +162,12 @@
       <div class="card" id="google-status"></div>
         <div class="card">
           <h3>Sign in with Google</h3>
-          <p class="muted">Reads only mail from easyequities.co.za: trade invoices, deposits, withdrawals, EasyProperties orders and corporate actions. Trades, deposits and withdrawals become transactions automatically.</p>
+          <div class="callout info"><span class="cl-icon" aria-hidden="true">i</span><p><b class="cl-tag">Info</b> Reads only mail from easyequities.co.za: trade invoices, deposits, withdrawals, EasyProperties orders and corporate actions. Trades, deposits and withdrawals become transactions automatically.</p></div>
           <div class="row" id="ee-google-row">
             <button type="button" id="ee-google" class="gsi"><svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg><span>Sign in with Google</span></button>
             <button type="button" id="ee-mail-off" class="secondary" hidden>Disconnect</button>
           </div>
-          <p class="muted" id="ee-google-note" style="margin:0.6rem 0 0">Google asks you to allow read-only access to your mail. C-Lab only searches for mail from easyequities.co.za and for statement emails from your banks, and you can remove its access any time in your Google account.</p>
+          <div class="callout info"><span class="cl-icon" aria-hidden="true">i</span><p id="ee-google-note"><b class="cl-tag">Info</b> Google asks you to allow read-only access to your mail. C-Lab only searches for mail from easyequities.co.za and for statement emails from your banks, and you can remove its access any time in your Google account.</p></div>
         </div>
     </section>
 
@@ -192,7 +192,7 @@
         <thead><tr><th>Holding</th><th class="num">Units</th><th class="num">Avg cost</th><th class="num">Price</th><th class="num">Value</th><th class="num">Gain</th><th class="num">Dividends</th><th></th></tr></thead>
         <tbody id="holding-rows"></tbody>
       </table></div>
-      <p class="muted">EasyEquities holdings use the price from your last EasyEquities sync. EasyProperties is on the Property page. Anything else without a market price? Use "Set price".</p>
+      <div class="callout info"><span class="cl-icon" aria-hidden="true">i</span><p><b class="cl-tag">Info</b> EasyEquities holdings use the price from your last EasyEquities sync. EasyProperties is on the Property page. Anything else without a market price? Use "Set price".</p></div>
     </section>
 
     <!-- Transactions -->
@@ -240,13 +240,13 @@
           <div><strong>Statement reader</strong><br><small class="muted" id="reader-note"></small></div>
           <button id="read-stmts" class="small">Read statements</button>
         </div>
-        <p class="muted">Grouped by account. <strong>View</strong> opens the PDF; <strong>Text</strong> shows what C-Lab read from it, line by line to the cent.</p>
+        <div class="callout info"><span class="cl-icon" aria-hidden="true">i</span><p><b class="cl-tag">Info</b> Grouped by account. <strong>View</strong> opens the PDF; <strong>Text</strong> shows what C-Lab read from it, line by line to the cent.</p></div>
         <div id="pdf-groups"></div>
       </details>
 
       <details class="section" id="stmt-wrap" hidden>
         <summary><span>Statement lines: dividends, fees and more</span><span class="count" id="cnt-stmt"></span></summary>
-        <p class="muted">Every line from EasyEquities' own transaction history, totalled per account and year. Fees and tax show as negative.</p>
+        <div class="callout info"><span class="cl-icon" aria-hidden="true">i</span><p><b class="cl-tag">Info</b> Every line from EasyEquities' own transaction history, totalled per account and year. Fees and tax show as negative.</p></div>
         <div class="card table-wrap"><table>
           <thead><tr><th>Account · year</th><th class="num">Dividends</th><th class="num">Interest</th><th class="num">Fees</th><th class="num">Tax</th><th class="num">Deposits</th><th class="num">Withdrawals</th><th class="num">Other</th></tr></thead>
           <tbody id="stmt-totals"></tbody>
@@ -326,11 +326,11 @@
           <input name="alert_above" type="number" step="any" placeholder="Alert above R" style="width:9rem" />
           <button type="submit">Watch</button>
         </form>
-        <p class="muted" style="margin:0.5rem 0 0">JSE symbols end in <code>.JO</code>. Property shares to try: GRT.JO (Growthpoint), RDF.JO (Redefine), FFB.JO (Fortress), VKE.JO (Vukile), STXPRO.JO (Satrix Property ETF). Alerts are checked nightly and emailed to you.</p>
+        <div class="callout info"><span class="cl-icon" aria-hidden="true">i</span><p><b class="cl-tag">Info</b> JSE symbols end in <code>.JO</code>. Property shares to try: GRT.JO (Growthpoint), RDF.JO (Redefine), FFB.JO (Fortress), VKE.JO (Vukile), STXPRO.JO (Satrix Property ETF). Alerts are checked nightly and emailed to you.</p></div>
       </div>
       <details class="section" id="picks-wrap" hidden>
         <summary><span>Dividend picks from EasyEquities</span><span class="count" id="cnt-picks"></span></summary>
-        <p class="muted">Still time to buy before the last day to trade. <strong>Watch</strong> looks up the ticker and adds it here. <span id="picks-refresh-note"></span></p>
+        <div class="callout info"><span class="cl-icon" aria-hidden="true">i</span><p><b class="cl-tag">Info</b> Still time to buy before the last day to trade. <strong>Watch</strong> looks up the ticker and adds it here. <span id="picks-refresh-note"></span></p></div>
         <div class="card table-wrap"><table>
           <thead><tr><th>What</th><th class="num">Dividend</th><th class="num">Price (1 unit)</th><th class="num">Yield</th><th>Last day to trade</th><th>Paid</th><th></th></tr></thead>
           <tbody id="picks"></tbody>
@@ -439,11 +439,11 @@
       <div class="ai-box" id="ai-banking" data-section="banking"></div>
 
       <h2>Your banks</h2>
-      <p class="muted">Each account's standing is the balance on its latest transaction. Wrong type? Change it: credit cards and loans count as debt.</p>
+      <div class="callout info"><span class="cl-icon" aria-hidden="true">i</span><p><b class="cl-tag">Info</b> Each account's standing is the balance on its latest transaction. Wrong type? Change it: credit cards and loans count as debt.</p></div>
       <div id="bank-accounts"></div>
 
       <h2>Debts you add yourself</h2>
-      <p class="muted">Car finance, a personal loan, store accounts, money you owe someone. Home loans go on the Property page (bond).</p>
+      <div class="callout info"><span class="cl-icon" aria-hidden="true">i</span><p><b class="cl-tag">Info</b> Car finance, a personal loan, store accounts, money you owe someone. Home loans go on the Property page (bond).</p></div>
       <div class="grid" id="liabilities"></div>
       <details class="section" id="sec-liab-add">
         <summary><span>Add a debt</span></summary>
@@ -485,14 +485,31 @@
     </section>
     <!-- Ask AI -->
     <section id="ai" hidden>
-      <div class="card chat chat-full">
-        <div id="chat-log" class="chat-log" aria-live="polite"></div>
-        <div class="chips" id="chat-chips"></div>
-        <form id="chat-form" class="chat-form">
-          <textarea name="q" rows="2" placeholder="Ask about your money: spending, fees, debt, dividends, what to do next…" required></textarea>
-          <div class="row"><button type="submit">Send</button><button type="button" class="secondary small" id="chat-clear">New chat</button></div>
-        </form>
-        <p class="muted" style="margin:0.5rem 0 0"><small>Answers come from Groq using your C-Lab totals (no account numbers). Not financial advice.</small></p>
+      <div class="ai-app">
+        <aside class="ai-side" id="ai-side" aria-label="Your chats">
+          <div class="ai-side-head">
+            <a href="#overview" class="ai-back" title="Back to C-Lab">← C-Lab</a>
+            <button type="button" id="ai-new" class="small">+ New chat</button>
+          </div>
+          <div class="ai-chats" id="ai-chats"></div>
+          <p class="ai-side-foot"><small>Groq, using your C-Lab totals only (no account numbers). Not financial advice.</small></p>
+        </aside>
+        <div class="ai-scrim" id="ai-scrim"></div>
+        <div class="ai-main">
+          <header class="ai-top">
+            <button type="button" class="ai-icon-btn" id="ai-side-toggle" aria-label="Show chats">☰</button>
+            <div class="ai-top-title"><strong id="ai-title">Ask AI</strong><small class="muted" id="ai-topic"></small></div>
+            <a href="#overview" class="ai-icon-btn" aria-label="Close">✕</a>
+          </header>
+          <div class="ai-log" id="chat-log" aria-live="polite"></div>
+          <div class="ai-bottom">
+            <div class="chips" id="chat-chips"></div>
+            <form id="chat-form" class="ai-composer">
+              <textarea name="q" rows="1" placeholder="Ask about your money…" required></textarea>
+              <button type="submit" aria-label="Send">↑</button>
+            </form>
+          </div>
+        </div>
       </div>
     </section>
   </main>
@@ -515,6 +532,7 @@
       const s = await api.investSummary();
       renderEEOverview(s);
       renderBlog(s.blog);
+      lastSummary = s;
       api.investMoney().then(mp => renderMoney(mp, s)).catch(e => flash(e.message, "err"));
       summaryOverview(s);
       summaryHoldings(s);
@@ -1402,7 +1420,9 @@
     // Summary card under each tab's charts: the totals in words.
     function summary(id, items, note = "") {
       const shown = items.filter(Boolean);
-      $(id).innerHTML = shown.length ? `<div class="card summary"><h3>Summary</h3><dl class="sum-list">${shown.map(([k, v, sub]) =>
+      const topic = id.replace("#sum-", "");
+      const askBtn = TOPIC_NAME[topic] ? `<button type="button" class="secondary small ask-about" data-topic="${topic}">✨ Ask AI about this</button>` : "";
+      $(id).innerHTML = shown.length ? `<div class="card summary"><div class="ai-head"><h3>Summary</h3>${askBtn}</div><dl class="sum-list">${shown.map(([k, v, sub]) =>
         `<div><dt>${k}</dt><dd>${v}${sub ? `<small class="muted">${sub}</small>` : ""}</dd></div>`).join("")}</dl>${note ? `<p class="sum-note">${note}</p>` : ""}</div>` : "";
     }
     const pctOf = (a, b) => b ? `${(a / b * 100).toFixed(1)}%` : "—";
@@ -1582,7 +1602,7 @@
       let r;
       try { r = await api.aiSuggestions(section, refresh); }
       catch (e) { box.innerHTML = `<div class="card ai-card"><h3>Suggestions</h3><p class="muted">${esc(e.message)}</p></div>`; return; }
-      box.innerHTML = `<div class="card ai-card"><div class="ai-head"><h3>Suggestions</h3>
+      box.innerHTML = `<div class="card ai-card"><div class="ai-head"><h3><span class="cl-icon" aria-hidden="true">i</span> Suggestions</h3>
         ${(() => { const wait = r.next_refresh_at && new Date(r.next_refresh_at + "Z") > new Date();
           return `<button class="secondary small ai-go"${wait ? " disabled" : ""}>${!r.items.length ? "Suggest improvements" : wait ? `Refresh after ${new Date(r.next_refresh_at + "Z").toLocaleTimeString("en-ZA", { hour: "2-digit", minute: "2-digit" })}` : "Refresh"}</button>`; })()}</div>
         ${r.items.length ? `<ol class="ai-list">${r.items.map(i => `<li><strong>${esc(i.title)}</strong> ${badge(...(IMPACT[i.impact] || IMPACT.medium))}
@@ -1592,10 +1612,6 @@
       $(".ai-go", box).addEventListener("click", () => loadSuggestions(section, true));
     }
 
-    const CHAT_KEY = "clab_chat";
-    let chatMsgs = [];
-    try { chatMsgs = JSON.parse(sessionStorage.getItem(CHAT_KEY) || "[]"); } catch { chatMsgs = []; }
-    const saveChat = () => { try { sessionStorage.setItem(CHAT_KEY, JSON.stringify(chatMsgs.slice(-30))); } catch { /* private mode */ } };
     // Small Markdown renderer for AI replies: headings, tables, lists, bold/italic, code, links. Input is escaped first.
     function md(src) {
       const inline = (t) => esc(t)
@@ -1641,34 +1657,103 @@
       }
       return html;
     }
-    const fmtReply = md;
+    // Ask AI: a full-screen chat app with saved conversations (on the server) and tap-to-ask follow-ups.
+    const TOPIC_NAME = { overview: "Portfolio", banking: "Banking", holdings: "Holdings", transactions: "Transactions",
+      property: "Property", watchlist: "Watchlist" };
+    const STARTERS = [["📊", "How am I doing overall?"], ["🛒", "Where can I cut spending?"], ["⚖️", "Should I pay off debt or invest more?"],
+      ["💸", "How much do fees cost me a year?"], ["🌱", "Which dividends coming up look good?"], ["🏦", "How much should I keep in the bank?"]];
+    let chat = { id: null, title: "", topic: "", messages: [] }, pendingAsk = null, chatBusy = false;
+    const sideOpen = (open) => { $("#ai-side").classList.toggle("open", open); $("#ai-scrim").classList.toggle("open", open); };
+    async function loadChatList() {
+      const list = await api.aiChats().catch(() => []);
+      $("#ai-chats").innerHTML = list.map(c => `<div class="ai-chat-item${c.id === chat.id ? " active" : ""}" data-id="${c.id}">
+        <button type="button" class="ai-chat-open"><span>${esc(c.title)}</span><small>${TOPIC_NAME[c.topic] ? TOPIC_NAME[c.topic] + " · " : ""}${day(c.updated_at)}</small></button>
+        <button type="button" class="ai-chat-del" aria-label="Delete chat">×</button></div>`).join("")
+        || `<p class="muted" style="padding:0 0.8rem"><small>Your chats appear here.</small></p>`;
+    }
+    $("#ai-chats").addEventListener("click", async (e) => {
+      const item = e.target.closest(".ai-chat-item");
+      if (!item) return;
+      if (e.target.closest(".ai-chat-del")) {
+        if (!confirm("Delete this chat?")) return;
+        await api.aiDeleteChat(item.dataset.id).catch(err => flash(err.message, "err"));
+        if (String(chat.id) === item.dataset.id) newChat();
+        return loadChatList();
+      }
+      try { chat = await api.aiChat(item.dataset.id); renderChat(); loadChatList(); sideOpen(false); } catch (err) { flash(err.message, "err"); }
+    });
+    function newChat(topic = "") { chat = { id: null, title: "", topic, messages: [] }; renderChat(); loadChatList(); sideOpen(false); }
+    $("#ai-new").addEventListener("click", () => newChat());
+    $("#ai-side-toggle").addEventListener("click", () => sideOpen(!$("#ai-side").classList.contains("open")));
+    $("#ai-scrim").addEventListener("click", () => sideOpen(false));
+
+    function welcome() {
+      const s = lastSummary;
+      const pill = (label, v) => v == null ? "" : `<span class="ai-pill"><small>${label}</small><b>${v}</b></span>`;
+      return `<div class="ai-welcome"><h2>${chat.topic ? `Ask about your ${TOPIC_NAME[chat.topic] || "money"}` : "Ask about your money"}</h2>
+        <p class="muted">The AI sees your latest totals from C-Lab: investments, property, bank, debt, fees and dividends.</p>
+        ${s ? `<div class="ai-pills">${pill("Net worth", money(s.net_worth))}${pill("Investments", money(s.value))}${s.banking ? pill("Bank", money(s.banking.cash)) + pill("Debt", money(s.banking.debt)) : ""}</div>` : ""}
+        <div class="ai-starters">${STARTERS.map(([icon, q]) => `<button type="button" class="ai-starter"><span>${icon}</span>${esc(q)}</button>`).join("")}</div></div>`;
+    }
     function renderChat(thinking = false) {
-      $("#chat-log").innerHTML = chatMsgs.map(m => `<div class="msg ${m.role}">${m.role === "user" ? esc(m.content) : fmtReply(m.content)}</div>`).join("")
-        + (thinking ? `<div class="msg assistant muted">Thinking…</div>` : "")
-        || `<p class="muted">Ask anything about your money. C-Lab sends the AI your latest totals: investments, property, bank, debt and fees.</p>`;
+      $("#ai-title").textContent = chat.title || "New chat";
+      $("#ai-topic").textContent = TOPIC_NAME[chat.topic] ? ` · about ${TOPIC_NAME[chat.topic]}` : "";
+      const msgs = chat.messages.map((m, i) => m.role === "user"
+        ? `<div class="msg user">${esc(m.content)}</div>`
+        : `<div class="msg assistant"><div class="msg-body">${md(m.content)}</div><div class="msg-tools">
+            <button type="button" class="ai-copy" data-i="${i}">Copy</button></div></div>`).join("");
+      $("#chat-log").innerHTML = (chat.messages.length ? msgs : welcome())
+        + (thinking ? `<div class="msg assistant typing"><span></span><span></span><span></span></div>` : "");
+      const last = [...chat.messages].reverse().find(m => m.role === "assistant");
+      const ups = !thinking && last?.followups?.length ? last.followups : [];
+      $("#chat-chips").innerHTML = ups.map(q => `<button type="button" class="secondary small chip">${esc(q)}</button>`).join("");
       $("#chat-log").scrollTop = $("#chat-log").scrollHeight;
     }
-    const CHIPS = ["How am I doing overall?", "Where can I cut spending?", "Should I pay off debt or invest more?",
-      "How much do fees cost me a year?", "Which dividends coming up look good?", "How much should I keep in the bank?"];
+    $("#chat-log").addEventListener("click", (e) => {
+      const st = e.target.closest(".ai-starter");
+      if (st) return ask(st.textContent.replace(/^\S+\s*/, "").trim() || st.textContent.trim());
+      const cp = e.target.closest(".ai-copy");
+      if (cp) { navigator.clipboard?.writeText(chat.messages[cp.dataset.i].content).then(() => flash("Copied.")).catch(() => {}); }
+    });
+    $("#chat-chips").addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (c) ask(c.textContent); });
     async function ask(q) {
-      chatMsgs.push({ role: "user", content: q });
+      q = (q || "").trim();
+      if (!q || chatBusy) return;
+      chatBusy = true;
+      chat.messages.push({ role: "user", content: q });
+      if (!chat.title) chat.title = q.slice(0, 80);
       renderChat(true);
-      try { const r = await api.aiChat(chatMsgs); chatMsgs.push({ role: "assistant", content: r.reply }); }
-      catch (e) { chatMsgs.push({ role: "assistant", content: `Couldn't answer: ${e.message}` }); }
-      saveChat();
+      try {
+        const r = await api.aiConverse({ message: q, chat_id: chat.id, topic: chat.topic });
+        chat.id = r.chat_id; chat.title = r.title;
+        chat.messages.push({ role: "assistant", content: r.reply, followups: r.followups });
+        loadChatList();
+      } catch (e) { chat.messages.push({ role: "assistant", content: `Couldn't answer: ${e.message}` }); }
+      chatBusy = false;
       renderChat();
     }
+    let lastSummary = null;
     async function loadChat() {
       aiStatus ||= await api.aiStatus().catch(() => ({ suggestions: false, chat: false }));
-      $("#chat-chips").innerHTML = CHIPS.map(c => `<button type="button" class="secondary small chip">${esc(c)}</button>`).join("");
-      $$("#chat-chips .chip").forEach(b => b.addEventListener("click", () => ask(b.textContent)));
-      $("#chat-form").q.disabled = !aiStatus.chat;
-      if (!aiStatus.chat) { $("#chat-log").innerHTML = `<p class="muted">Ask AI needs a Groq key (GitHub secret GROQ_API_KEYS).</p>`; return; }
-      renderChat();
+      if (!lastSummary) api.investSummary().then(s => { lastSummary = s; if (!chat.messages.length) renderChat(); }).catch(() => {});
+      const form = $("#chat-form");
+      form.q.disabled = !aiStatus.chat;
+      if (!aiStatus.chat) { $("#chat-log").innerHTML = `<p class="muted" style="padding:1rem">Ask AI needs a Groq key (GitHub secret GROQ_API_KEYS).</p>`; return; }
+      loadChatList();
+      if (pendingAsk) { const p = pendingAsk; pendingAsk = null; newChat(p.topic); if (p.prompt) ask(p.prompt); }
+      else renderChat();
+      setTimeout(() => form.q.focus(), 50);
     }
-    onSubmit($("#chat-form"), async (d, e) => { e.target.reset(); await ask(d.q.trim()); });
-    $("#chat-form").q.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#chat-form").requestSubmit(); } });
-    $("#chat-clear").addEventListener("click", () => { chatMsgs = []; saveChat(); renderChat(); });
+    const composer = $("#chat-form").q;
+    composer.addEventListener("input", () => { composer.style.height = "auto"; composer.style.height = Math.min(composer.scrollHeight, 160) + "px"; });
+    composer.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#chat-form").requestSubmit(); } });
+    $("#chat-form").addEventListener("submit", (e) => { e.preventDefault(); const q = composer.value; composer.value = ""; composer.style.height = "auto"; ask(q); });
+    // "Ask AI about this" from any tab
+    function askAbout(topic, prompt = "") { pendingAsk = { topic, prompt }; location.hash = "#ai"; }
+    document.addEventListener("click", (e) => {
+      const b = e.target.closest(".ask-about");
+      if (b) askAbout(b.dataset.topic, `Explain my ${TOPIC_NAME[b.dataset.topic].toLowerCase()} numbers and what I should do about them.`);
+    });
 
     // Market pulse: SA news + sentiment, calendar, outlook, technicals.
     const MOOD = { positive: ["positive", "ok"], negative: ["negative", "warn"], mixed: ["mixed", ""], neutral: ["neutral", "muted"] };
@@ -1753,6 +1838,7 @@
     function show() {
       const hash = location.hash.slice(1), id = LOAD[hash] ? hash : ALIAS[hash] || "markets";
       $$("main section").forEach(s => s.hidden = s.id !== id);
+      document.body.classList.toggle("immersive", id === "ai");
       setActive(id);
       LOAD[id]().catch(e => flash(e.message, "err"));
       loadSuggestions(id).catch(() => {});

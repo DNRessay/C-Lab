@@ -57,3 +57,24 @@ def test_suggestions_and_chat(market, monkeypatch):
     assert calls[0] != calls[1]  # rate-limited key, then the next one
     again = api.post("/api/ai/chat", headers=h, json={"messages": [{"role": "user", "content": "How am I doing?"}]}).json()
     assert again["cached"] is True and len(calls) == 2  # starter question answered from cache
+
+
+def test_conversations(market, monkeypatch):
+    h = register("aiuser")
+    monkeypatch.setattr(settings, "groq_api_keys", ["g"])
+    seen = []
+    monkeypatch.setattr(llm, "groq", lambda messages, max_tokens=900, json_mode=False: seen.append(messages) or
+                        "**You're fine.**\n- Bank: R10\nFOLLOWUPS: Where can I cut? | How are fees? | What about debt?")
+    r = api.post("/api/ai/converse", headers=h, json={"message": "How am I doing?", "topic": "banking"}).json()
+    assert r["reply"] == "**You're fine.**\n- Bank: R10" and r["followups"] == ["Where can I cut?", "How are fees?", "What about debt?"]
+    assert "banking page" in seen[0][0]["content"]
+    r2 = api.post("/api/ai/converse", headers=h, json={"message": "And fees?", "chat_id": r["chat_id"]}).json()
+    assert r2["chat_id"] == r["chat_id"] and len(seen[1]) == 4  # system + earlier turn + new question
+    chats = api.get("/api/ai/chats", headers=h).json()
+    assert chats[0]["title"] == "How am I doing?" and chats[0]["count"] == 4
+    full = api.get(f"/api/ai/chats/{r['chat_id']}", headers=h).json()
+    assert full["messages"][1]["followups"][0] == "Where can I cut?"
+    other = register("nosy")
+    assert api.get(f"/api/ai/chats/{r['chat_id']}", headers=other).status_code == 404
+    assert api.delete(f"/api/ai/chats/{r['chat_id']}", headers=h).status_code == 204
+    assert api.get("/api/ai/chats", headers=h).json() == []

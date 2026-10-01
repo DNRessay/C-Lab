@@ -113,7 +113,10 @@ export const api = {
 
   aiStatus: () => get("/api/ai/status"),
   aiSuggestions: (section, refresh) => get(`/api/ai/suggestions/${section}${refresh ? "?refresh=true" : ""}`),
-  aiChat: (messages) => post("/api/ai/chat", { messages }),
+  aiChats: () => get("/api/ai/chats"),
+  aiChat: (id) => get(`/api/ai/chats/${id}`),
+  aiDeleteChat: (id) => del(`/api/ai/chats/${id}`),
+  aiConverse: (b) => post("/api/ai/converse", b),
   blog: () => get("/api/invest/blog"),
   blogRefresh: () => post("/api/invest/blog/refresh"),
   blogWatch: (b) => post("/api/invest/blog/watch", b),
