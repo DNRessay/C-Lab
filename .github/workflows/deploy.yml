@@ -14,6 +14,7 @@ env:
   AWS_REGION: eu-west-1
   STACK: c-lab-api
   PAGES_PROJECT: c-lab
+  CUSTOM_DOMAIN: ${{ vars.CLAB_DOMAIN || 'lab.cthai.co.za' }}
 
 jobs:
   test:
@@ -93,8 +94,18 @@ jobs:
               -d "{\"name\":\"$PAGES_PROJECT\",\"production_branch\":\"main\"}" -o project.json
           fi
           SUB=$(python -c "import json; print(json.load(open('project.json'))['result']['subdomain'])")
-          echo "FRONTEND_URL=https://$SUB" >> "$GITHUB_ENV"
-          echo "Frontend: https://$SUB"
+          FRONT="https://$SUB"
+          if [ -n "$CUSTOM_DOMAIN" ]; then
+            # Attach (no-op when already attached). Logins only move to it once Cloudflare says it's live.
+            curl -s -X POST -H "$auth" -H "Content-Type: application/json" "$api/$PAGES_PROJECT/domains" \
+              -d "{\"name\":\"$CUSTOM_DOMAIN\"}" -o /dev/null || true
+            ST=$(curl -s -H "$auth" "$api/$PAGES_PROJECT/domains/$CUSTOM_DOMAIN" | python -c "import json,sys; print((json.load(sys.stdin).get('result') or {}).get('status'))" || true)
+            echo "$CUSTOM_DOMAIN: $ST"
+            [ "$ST" = "active" ] && FRONT="https://$CUSTOM_DOMAIN"
+          fi
+          echo "PAGES_URL=https://$SUB" >> "$GITHUB_ENV"
+          echo "FRONTEND_URL=$FRONT" >> "$GITHUB_ENV"
+          echo "Frontend: $FRONT"
 
       - name: Build backend
         working-directory: backend
@@ -104,7 +115,12 @@ jobs:
         working-directory: backend
         run: |
           sam package --resolve-s3 --region "$AWS_REGION" --output-template-file packaged.yaml
-          params=("SecretKey=$SECRET_KEY" "DatabaseUrl=$DATABASE_URL" "FrontendUrl=$FRONTEND_URL")
+          origins="$PAGES_URL"
+          [ -n "$CUSTOM_DOMAIN" ] && origins="$origins,https://$CUSTOM_DOMAIN"
+          host="${PAGES_URL#https://}"
+          regex="https://([a-z0-9-]+\\.)?${host//./\\.}"  # preview deploys on *.c-lab.pages.dev
+          params=("SecretKey=$SECRET_KEY" "DatabaseUrl=$DATABASE_URL" "FrontendUrl=$FRONTEND_URL"
+                  "CorsAllowedOrigins=$origins" "CorsOriginRegex=$regex")
           [ -n "$SIGNUP_EMAILS" ] && params+=("SignupEmails=$SIGNUP_EMAILS")
           [ -n "$EMAIL_HOST" ] && params+=("EmailHost=$EMAIL_HOST" "EmailHostUser=$EMAIL_HOST_USER" "EmailHostPassword=$EMAIL_HOST_PASSWORD")
           [ -n "$GOOGLE_CLIENT_ID" ] && params+=("GoogleClientId=$GOOGLE_CLIENT_ID" "GoogleClientSecret=$GOOGLE_CLIENT_SECRET")
