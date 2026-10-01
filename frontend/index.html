@@ -522,7 +522,7 @@
       loadDecisions().catch(e => flash(e.message, "err"));
       const kpi = (label, value, sub = "") => `<div class="card stat"><div class="value">${value}</div><div class="label">${label}${sub ? `<br>${sub}` : ""}</div></div>`;
       $("#kpis").innerHTML =
-        kpi("Portfolio worth", money(s.value), s.cash != null ? `incl. ${money(s.cash)} cash` : "") +
+        kpi("Portfolio worth", money(s.value), s.cash == null ? "" : s.cash < 0 ? `after ${money(-s.cash)} owed to EasyEquities` : `incl. ${money(s.cash)} cash`) +
         kpi(s.easyequities && !s.since ? "Cost of holdings + cash" : "Money put in", money(s.invested), s.since ? `since ${s.since}` : s.easyequities?.taken_at ? `EasyEquities, ${ago(s.easyequities.taken_at)}` : "") +
         kpi("Gain", signed(s.gain), pct(s.return_pct)) +
         (s.income ? kpi("Dividends + interest", money(s.income.dividend + s.income.interest), "all time, from EasyEquities") +
@@ -954,7 +954,7 @@
       if (!ee) return;
       $("#ee-accounts").innerHTML = ee.accounts.map(a => `<div class="card stat"><div class="value">${money(a.value_zar)}</div>
         <div class="label">${esc(a.name)}${a.currency !== "ZAR" ? ` · ${cur(a.value, a.currency)}` : ""}<br>
-        ${a.holdings} holding(s)${a.cash_zar >= 0.01 ? ` · ${money(a.cash_zar)} cash` : ""}${a.warnings.length ? `<br>${badge("check EasyEquities page", "warn")}` : ""}</div></div>`).join("");
+        ${a.holdings} holding(s)${a.cash_zar >= 0.01 ? ` · ${money(a.cash_zar)} cash` : a.cash_zar <= -0.01 ? ` · <span class="neg">${money(a.cash_zar)} funds to invest</span>` : ""}${a.warnings.length ? `<br>${badge("check EasyEquities page", "warn")}` : ""}</div></div>`).join("");
     }
     async function loadDecisions() {
       const rows = (await api.eeMails("corporate_action")).filter(m => !m.done);
@@ -1413,7 +1413,7 @@
       const b = s.banking || {};
       summary("#sum-overview", [
         ["Real net worth", `<strong>${money(s.net_worth)}</strong>`, "investments + property + bank − debt"],
-        ["Portfolio worth", money(s.value), `${shares} holdings${s.cash != null ? ` · ${money(s.cash)} cash` : ""}`],
+        ["Portfolio worth", money(s.value), `${shares} holdings${s.cash == null ? "" : s.cash < 0 ? ` · ${money(-s.cash)} owed to EasyEquities` : ` · ${money(s.cash)} cash`}`],
         ["Money put in", money(s.invested), s.since ? `since ${s.since}` : ""],
         ["Gain", signed(s.gain), pct(s.return_pct)],
         inc != null && ["Dividends + interest", money(inc), `dividends ${money(s.income.dividend)} · interest ${money(s.income.interest)}`],

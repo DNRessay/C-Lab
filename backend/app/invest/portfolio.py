@@ -207,7 +207,7 @@ def summary(db: Session, user_id: int):
     allocation = defaultdict(float)
     for r in rows:
         allocation[r["asset_class"]] += r["value"]
-    if cash:
+    if cash and cash > 0:
         allocation["cash"] += float(cash)
 
     props = [property_view(p) for p in db.scalars(select(PropertyAsset).where(PropertyAsset.user_id == user_id)

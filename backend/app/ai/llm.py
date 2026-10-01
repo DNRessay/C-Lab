@@ -37,6 +37,27 @@ def cohere(system: str, user: str, json_mode=False) -> str:
 
 
 _next_key = 0
+_model = None
+PREFERRED = ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "moonshotai/kimi-k2-instruct", "qwen/qwen3-32b",
+             "openai/gpt-oss-20b", "llama-3.1-8b-instant"]
+
+
+def groq_model(key, refresh=False):
+    """The configured model, or (after a 'model not found') the best one this key can use."""
+    global _model
+    if _model and not refresh:
+        return _model
+    if not refresh:
+        return settings.groq_model
+    try:
+        r = requests.get("https://api.groq.com/openai/v1/models", headers={"Authorization": f"Bearer {key}"}, timeout=20)
+        ids = [m["id"] for m in r.json().get("data", []) if m.get("active", True)]
+    except Exception:
+        ids = []
+    chat = [i for i in ids if not re.search(r"whisper|tts|guard|playai|distil|compound", i)]
+    _model = next((p for p in PREFERRED if p in chat), chat[0] if chat else settings.groq_model)
+    log.info("Groq model switched to %s", _model)
+    return _model
 
 
 def groq(messages, max_tokens=900, json_mode=False) -> str:
@@ -48,9 +69,12 @@ def groq(messages, max_tokens=900, json_mode=False) -> str:
     last = ""
     for i in range(len(keys)):
         key = keys[(_next_key + i) % len(keys)]
-        r = requests.post(GROQ_URL, timeout=60, headers={"Authorization": f"Bearer {key}"},
-                          json={"model": settings.groq_model, "messages": messages, "temperature": 0 if json_mode else 0.4,
-                                "max_tokens": max_tokens, **({"response_format": {"type": "json_object"}} if json_mode else {})})
+        body = {"messages": messages, "temperature": 0 if json_mode else 0.4, "max_tokens": max_tokens,
+                **({"response_format": {"type": "json_object"}} if json_mode else {})}
+        r = requests.post(GROQ_URL, timeout=60, headers={"Authorization": f"Bearer {key}"}, json={"model": groq_model(key), **body})
+        if r.status_code in (400, 404) and "model" in r.text.lower():
+            r = requests.post(GROQ_URL, timeout=60, headers={"Authorization": f"Bearer {key}"},
+                              json={"model": groq_model(key, refresh=True), **body})
         if r.status_code == 429:
             last = "rate limited"
             continue

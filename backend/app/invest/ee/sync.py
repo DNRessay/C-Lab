@@ -114,7 +114,9 @@ def platform_view(db: Session, conn: EEConnection):
         total += value
         accounts.append({"id": acc.get("id"), "name": acc.get("name"), "currency": cur, "rate": rate,
                          "value": acc.get("value"), "value_zar": value, "holdings": rows,
-                         "cash_zar": max(value - holdings_value, 0.0),
+                         # EasyEquities' account value = holdings + "Funds to Invest", which goes negative when
+                         # costs are owed; keep the sign so worth matches EasyEquities.
+                         "cash_zar": value - holdings_value,
                          "cost_zar": sum(r["cost_zar"] for r in rows), "warnings": acc.get("warnings", [])})
     return {"accounts": accounts, "value_zar": total, "taken_at": snap.get("taken_at")}, symbol_prices
 
