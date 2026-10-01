@@ -25,7 +25,7 @@ def test_sa_id_check():
             check_sa_id(bad)
 
 
-def test_signup_onboarding_and_report(market):
+def test_signup_onboarding_and_report(market, monkeypatch):
     r = api.post("/api/auth/register", json={"first_name": "New", "email": "newbie@inv.example.com", "password": "Str0ng-pass!",
                                              "id_number": "8001015009088"})
     assert r.status_code == 400 and "check digit" in r.text
@@ -35,6 +35,20 @@ def test_signup_onboarding_and_report(market):
     h = {"Authorization": f"Bearer {r.json()['access']}"}
     st = api.get("/api/onboarding", headers=h).json()
     assert st["steps"]["id"]["done"] and not st["steps"]["easyequities"]["done"] and not st["complete"]
+    assert not st["steps"]["email"]["done"]
+    sent = []
+    import app.services.mailer as mailer
+
+    monkeypatch.setattr(mailer, "send_mail", lambda to, subject, body, html=None: sent.append((to, body)))
+    assert api.post("/api/onboarding/email/verify", headers=h, json={"code": "123456"}).status_code == 400  # none sent yet
+    api.post("/api/onboarding/email/send", headers=h)
+    assert api.post("/api/onboarding/email/send", headers=h).status_code == 429  # once a minute
+    code = sent[0][1].split("code is ")[1][:6]
+    assert sent[0][0] == "newbie@inv.example.com"
+    bad = api.post("/api/onboarding/email/verify", headers=h, json={"code": "000000" if code != "000000" else "111111"})
+    assert bad.status_code == 400 and "4 tries left" in bad.text
+    st = api.post("/api/onboarding/email/verify", headers=h, json={"code": code}).json()
+    assert st["steps"]["email"]["done"]
     assert "1980" in st["steps"]["id"]["detail"]
     db = SessionLocal()
     uid = db.query(User).filter(User.email == "newbie@inv.example.com").one().id

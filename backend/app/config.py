@@ -45,6 +45,8 @@ class Settings:
         self.email_port = int(_env("EMAIL_PORT", "587"))
         self.email_user = _env("EMAIL_HOST_USER")
         self.email_password = _env("EMAIL_HOST_PASSWORD")
+        self.ses_from = _env("SES_FROM")  # e.g. "C-Lab <noreply@vicinic.co.za>" (a verified SES identity)
+        self.ses_region = _env("SES_REGION", "eu-west-1")
         self.email_use_tls = _flag("EMAIL_USE_TLS", "true")
         self.default_from_email = _env("DEFAULT_FROM_EMAIL", "C-Lab <noreply@example.com>")
 

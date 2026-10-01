@@ -66,6 +66,11 @@ Resources:
       CodeUri: .
       Handler: app.main.handler
       MemorySize: 1024
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ["ses:SendEmail", "ses:SendRawEmail"]
+              Resource: "*"
       Timeout: 300
       Architectures: [x86_64]
       Environment:
@@ -81,6 +86,7 @@ Resources:
           DEFAULT_FROM_EMAIL: !Ref DefaultFromEmail
           GOOGLE_CLIENT_ID: !Ref GoogleClientId
           GOOGLE_CLIENT_SECRET: !Ref GoogleClientSecret
+          SES_FROM: "C-Lab <noreply@vicinic.co.za>"
           COHERE_API_KEY: !Ref CohereApiKey
           GROQ_API_KEYS: !Ref GroqApiKeys
           SERPAPI_KEYS: !Ref SerpApiKeys

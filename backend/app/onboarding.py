@@ -26,6 +26,27 @@ class UserProfile(Base):
     verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
 
+class EmailCode(Base):
+    """Email verification: a 6-digit code (stored hashed), valid 15 minutes, 5 tries."""
+
+    __tablename__ = "email_codes"
+    id: Mapped[int] = pk()
+    user_id: Mapped[int] = mapped_column(BigId, ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
+    code_hash: Mapped[str] = text(128)
+    sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    tries: Mapped[int] = mapped_column(default=0, nullable=False)
+    verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+def _hash_code(user_id: int, code: str) -> str:
+    import hashlib
+    import hmac
+
+    from .config import settings
+
+    return hmac.new(settings.secret_key.encode(), f"{user_id}:{code}".encode(), hashlib.sha256).hexdigest()
+
+
 def luhn_ok(digits: str) -> bool:
     """Luhn checksum: from the right, double every second digit (minus 9 if over 9); the total must end in 0."""
     total = 0
@@ -79,6 +100,7 @@ def status(db: Session, user: User):
     from .invest.ee import gmail
     from .invest.ee.models import EEConnection, EESetting
 
+    ec = db.scalar(select(EmailCode).where(EmailCode.user_id == user.id))
     prof = db.scalar(select(UserProfile).where(UserProfile.user_id == user.id))
     if not (prof and prof.verified_at):
         # Already gave it as the statement password? Use that instead of asking again.
@@ -102,6 +124,8 @@ def status(db: Session, user: User):
     opened = count(EEStatementDoc, EEStatementDoc.status == "ok") + count(BankStatement, BankStatement.status == "ok")
     locked = count(EEStatementDoc, EEStatementDoc.error.contains("decrypt")) + count(BankStatement, BankStatement.status == "locked")
     steps = {
+        "email": {"done": bool(ec and ec.verified_at),
+                  "detail": user.email if ec and ec.verified_at else (f"Code sent to {user.email}" if ec and ec.sent_at else "")},
         "id": {"done": bool(prof and prof.verified_at),
                "detail": (f"Born {prof.birth_date:%d %b %Y} · SA {prof.citizen}" if prof and prof.birth_date else "")},
         "easyequities": {"done": ee_ok, "detail": (conn.username if ee_ok else (conn.platform_error if conn and conn.username else ""))},
@@ -153,3 +177,60 @@ def find_statements(user: User = Depends(current_user), db: Session = Depends(ge
         db.rollback()
         tried["bank"] = {"error": str(e)[:200]}
     return {**status(db, user), "tried": tried}
+
+
+@router.post("/email/send")
+def send_code(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    import secrets
+    from datetime import timedelta
+
+    from .services.mailer import send_mail
+
+    ec = db.scalar(select(EmailCode).where(EmailCode.user_id == user.id)) or EmailCode(user_id=user.id, code_hash="")
+    if ec.verified_at:
+        return status(db, user)
+    if ec.sent_at and utcnow() - ec.sent_at < timedelta(seconds=60):
+        raise HTTPException(429, "A code was just sent. Wait a minute before asking again.")
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    ec.code_hash, ec.sent_at, ec.tries = _hash_code(user.id, code), utcnow(), 0
+    db.add(ec)
+    db.commit()
+    try:
+        send_mail(user.email, f"{code} is your C-Lab code",
+                  f"Hi {user.first_name},\n\nYour C-Lab verification code is {code}. It works for 15 minutes.\n\n"
+                  "If you didn't sign up for C-Lab, ignore this email.",
+                  html=f"<p>Hi {user.first_name},</p><p>Your C-Lab verification code is</p>"
+                       f"<p style=\"font-size:28px;font-weight:700;letter-spacing:6px\">{code}</p>"
+                       "<p>It works for 15 minutes. If you didn't sign up for C-Lab, ignore this email.</p>")
+    except Exception as e:
+        ec.sent_at = None
+        db.commit()
+        raise HTTPException(502, f"Couldn't send the email ({type(e).__name__}). Try again shortly.")
+    return status(db, user)
+
+
+class CodeIn(BaseModel):
+    code: str
+
+
+@router.post("/email/verify")
+def verify_code(body: CodeIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    import hmac
+    from datetime import timedelta
+
+    ec = db.scalar(select(EmailCode).where(EmailCode.user_id == user.id))
+    if ec and ec.verified_at:
+        return status(db, user)
+    if not ec or not ec.sent_at:
+        raise HTTPException(400, {"code": ["Ask for a code first."]})
+    if utcnow() - ec.sent_at > timedelta(minutes=15):
+        raise HTTPException(400, {"code": ["That code has expired. Send a new one."]})
+    if ec.tries >= 5:
+        raise HTTPException(400, {"code": ["Too many tries. Send a new code."]})
+    ec.tries += 1
+    if not hmac.compare_digest(ec.code_hash, _hash_code(user.id, "".join(ch for ch in body.code if ch.isdigit()))):
+        db.commit()
+        raise HTTPException(400, {"code": [f"That code isn't right ({5 - ec.tries} tries left)."]})
+    ec.verified_at, ec.code_hash = utcnow(), ""
+    db.commit()
+    return status(db, user)

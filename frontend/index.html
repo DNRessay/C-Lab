@@ -22,8 +22,13 @@
     <div class="onboard" id="onboard" hidden>
       <div class="onboard-card">
         <h1>Welcome<span id="ob-name"></span> 👋</h1>
-        <p class="muted">Four checks before C-Lab opens. Each turns green when it works.</p>
+        <p class="muted">Five checks before C-Lab opens. Each turns green when it works.</p>
         <ol class="ob-steps">
+          <li class="ob-step" data-step="email"><span class="ob-dot"></span><div><strong>Verify your email</strong><small class="ob-detail"></small>
+            <div class="ob-form"><button type="button" id="ob-email-send" class="small">Email me a code</button></div>
+            <form class="ob-form ob-code" id="ob-email"><input name="code" inputmode="numeric" maxlength="6" placeholder="6-digit code" required autocomplete="one-time-code" />
+              <button type="submit" class="small">Verify</button></form>
+            <small class="muted">We send a 6-digit code to your login email. It works for 15 minutes.</small></div></li>
           <li class="ob-step" data-step="id"><span class="ob-dot"></span><div><strong>Your SA ID number</strong><small class="ob-detail"></small>
             <form class="ob-form" id="ob-id"><input name="id_number" inputmode="numeric" placeholder="13 digits" required autocomplete="off" />
               <button type="submit" class="small">Check</button></form>
@@ -1971,11 +1976,13 @@
         const li = $(`.ob-step[data-step="${k}"]`);
         li.classList.toggle("done", v.done);
         $(".ob-detail", li).textContent = v.done ? `✓ ${v.detail || "done"}` : v.detail ? `Not working yet: ${v.detail}` : "";
-        $(".ob-form", li).hidden = v.done;
+        $$(".ob-form", li).forEach(f => f.hidden = v.done);
       });
       $("#ob-open").disabled = !st.complete;
     }
     onSubmit($("#ob-id"), async (d) => renderOnboard(await api.onboardingId(d.id_number)));
+    action($("#ob-email-send"), async () => { renderOnboard(await api.emailSend()); flash("Code sent. Check your inbox (and spam)."); $("#ob-email").code.focus(); });
+    onSubmit($("#ob-email"), async (d, e) => { renderOnboard(await api.emailVerify(d.code)); e.target.reset(); });
     onSubmit($("#ob-ee"), async (d, e) => {
       flash("Signing in to EasyEquities… this can take a minute.", "warn");
       await api.eeConnectPlatform(d).catch(err => flash(err.message, "err"));
