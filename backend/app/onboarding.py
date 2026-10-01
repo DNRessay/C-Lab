@@ -91,11 +91,25 @@ def status(db: Session, user: User):
     conn = db.scalar(select(EEConnection).where(EEConnection.user_id == user.id))
     ee_ok = bool(conn and conn.username and conn.password and conn.platform_status == "ok")
     google_ok = bool(conn and conn.mail_password.startswith(gmail.PREFIX) and conn.mail_address and conn.mail_status != "error")
+    from sqlalchemy import func
+
+    from .banking.models import BankStatement
+    from .invest.ee.models import EEStatementDoc
+
+    def count(model, *conds):
+        return db.scalar(select(func.count()).select_from(model).where(model.user_id == user.id, *conds)) or 0
+
+    opened = count(EEStatementDoc, EEStatementDoc.status == "ok") + count(BankStatement, BankStatement.status == "ok")
+    locked = count(EEStatementDoc, EEStatementDoc.error.contains("decrypt")) + count(BankStatement, BankStatement.status == "locked")
     steps = {
         "id": {"done": bool(prof and prof.verified_at),
                "detail": (f"Born {prof.birth_date:%d %b %Y} · SA {prof.citizen}" if prof and prof.birth_date else "")},
         "easyequities": {"done": ee_ok, "detail": (conn.username if ee_ok else (conn.platform_error if conn and conn.username else ""))},
         "google": {"done": google_ok, "detail": conn.mail_address if google_ok else ""},
+        # Proof it all works: at least one statement found and opened with the ID.
+        "statements": {"done": opened > 0,
+                       "detail": (f"{opened} statement(s) opened with your ID" if opened else
+                                  f"Found {locked}, but your ID didn't open them. Check the ID number." if locked else "")},
     }
     return {"steps": steps, "complete": all(v["done"] for v in steps.values()), "name": user.first_name}
 
@@ -116,3 +130,26 @@ def set_id(body: IdIn, user: User = Depends(current_user), db: Session = Depends
     except ValueError as e:
         raise HTTPException(400, {"id_number": [str(e)]})
     return status(db, user)
+
+
+@router.post("/statements")
+def find_statements(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Try one EasyEquities statement and one bank statement from Gmail, opened with the ID number."""
+    from .banking import reader as bank_reader
+    from .invest.ee import reader as ee_reader
+    from .invest.ee.models import EEConnection
+
+    conn = db.scalar(select(EEConnection).where(EEConnection.user_id == user.id))
+    tried = {}
+    if conn and conn.username and conn.platform_status == "ok":
+        try:
+            tried["easyequities"] = ee_reader.read_batch(db, conn, limit=1)
+        except Exception as e:  # report, don't fail the whole check
+            db.rollback()
+            tried["easyequities"] = {"error": str(e)[:200]}
+    try:
+        tried["bank"] = bank_reader.read_batch(db, user.id, limit=2)
+    except Exception as e:
+        db.rollback()
+        tried["bank"] = {"error": str(e)[:200]}
+    return {**status(db, user), "tried": tried}

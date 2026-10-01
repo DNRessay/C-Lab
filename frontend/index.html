@@ -22,7 +22,7 @@
     <div class="onboard" id="onboard" hidden>
       <div class="onboard-card">
         <h1>Welcome<span id="ob-name"></span> 👋</h1>
-        <p class="muted">Three things before C-Lab opens. Each turns green when it works.</p>
+        <p class="muted">Four checks before C-Lab opens. Each turns green when it works.</p>
         <ol class="ob-steps">
           <li class="ob-step" data-step="id"><span class="ob-dot"></span><div><strong>Your SA ID number</strong><small class="ob-detail"></small>
             <form class="ob-form" id="ob-id"><input name="id_number" inputmode="numeric" placeholder="13 digits" required autocomplete="off" />
@@ -36,6 +36,9 @@
           <li class="ob-step" data-step="google"><span class="ob-dot"></span><div><strong>Google (Gmail)</strong><small class="ob-detail"></small>
             <div class="ob-form"><button type="button" id="ob-google" class="small">Sign in with Google</button></div>
             <small class="muted">Read-only Gmail: your EasyEquities emails and bank statements.</small></div></li>
+          <li class="ob-step" data-step="statements"><span class="ob-dot"></span><div><strong>Statements open with your ID</strong><small class="ob-detail"></small>
+            <div class="ob-form"><button type="button" id="ob-statements" class="small">Find my statements</button></div>
+            <small class="muted">Proof it all works: C-Lab finds at least one EasyEquities or bank statement and opens it with your ID.</small></div></li>
         </ol>
         <div class="row"><button type="button" id="ob-open" disabled>Open C-Lab</button><button type="button" class="secondary small" id="ob-logout">Log out</button></div>
       </div>
@@ -1981,6 +1984,13 @@
       if (!st.steps.easyequities.done) flash("EasyEquities didn't accept that login. Check it and try again.", "err");
     });
     action($("#ob-google"), async () => { const { url } = await api.eeGoogleStart(); location.href = url; });
+    action($("#ob-statements"), async () => {
+      flash("Looking for your statements and opening them with your ID… this can take a minute.", "warn");
+      const st = await api.onboardingStatements();
+      renderOnboard(st);
+      flash(st.steps.statements.done ? "Statements open. You're in." : st.steps.statements.detail || "No statements found yet: connect EasyEquities and Google first.",
+        st.steps.statements.done ? "ok" : "err");
+    });
     $("#ob-open").addEventListener("click", async () => { if (await gate()) { location.hash = "#ai"; show(); } });
     $("#ob-logout").addEventListener("click", () => { try { localStorage.removeItem("clab_access"); localStorage.removeItem("clab_refresh"); } catch { /* ignore */ } location.href = "/login.html"; });
     addEventListener("hashchange", () => { if (!document.body.classList.contains("locked")) show(); });

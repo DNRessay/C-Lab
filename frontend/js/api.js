@@ -113,6 +113,7 @@ export const api = {
 
   onboarding: () => get("/api/onboarding"),
   onboardingId: (id_number) => put("/api/onboarding/id", { id_number }),
+  onboardingStatements: () => post("/api/onboarding/statements"),
   report: (start, end) => get(`/api/reports?start=${start}&end=${end}`),
   aiStatus: () => get("/api/ai/status"),
   aiSuggestions: (section, refresh) => get(`/api/ai/suggestions/${section}${refresh ? "?refresh=true" : ""}`),

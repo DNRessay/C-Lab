@@ -44,12 +44,22 @@ def test_signup_onboarding_and_report(market):
                         mail_address="me@gmail.com", mail_password=gmail.PREFIX + seal("rt"), mail_status="ok"))
     db.commit()
     st = api.get("/api/onboarding", headers=h).json()
-    assert st["complete"] and st["steps"]["google"]["detail"] == "me@gmail.com"
+    assert st["steps"]["google"]["detail"] == "me@gmail.com" and not st["complete"]  # no statement opened yet
+    from app.banking.models import BankStatement
+
+    db.add(BankStatement(user_id=uid, gmail_id="g1", filename="s.pdf", status="locked", error="password"))
+    db.commit()
+    assert "didn't open" in api.get("/api/onboarding", headers=h).json()["steps"]["statements"]["detail"]
+    db.add(BankStatement(user_id=uid, gmail_id="g2", filename="s.pdf", status="ok"))
+    db.commit()
+    st = api.get("/api/onboarding", headers=h).json()
+    assert st["complete"] and st["steps"]["statements"]["done"]
 
     rep = api.get("/api/reports?start=2026-01-01&end=2026-09-30", headers=h).json()
     assert rep["period"] == {"start": "2026-01-01", "end": "2026-09-30", "months": 9}
     assert {"net_worth", "investments", "banking", "insights", "property"} <= rep.keys()
     assert api.get("/api/reports?start=nope", headers=h).status_code == 400
+    db.query(BankStatement).filter(BankStatement.user_id == uid).delete()
     db.query(EEConnection).filter(EEConnection.user_id == uid).delete()
     db.query(EESetting).filter(EESetting.user_id == uid).delete()
     db.commit()
