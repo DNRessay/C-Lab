@@ -455,7 +455,9 @@ def money_picture(db: Session, user_id: int, months=24):
                      "property": round(own_equity, 2),
                      "net_worth": round(inv + b["cash"] + own_equity - b["debt"] - manual_debt, 2),
                      "money_in": f.get("in", 0.0), "money_out": f.get("out", 0.0), "fees": f.get("fees", 0.0),
-                     "invested": round(moved.get(k, 0.0), 2)})
+                     # Money into investments: seen in the bank lines if there are any that month, else the statements.
+                     "invested": round(f["invested"] - f["from_investments"], 2) if f.get("invested") or f.get("from_investments")
+                     else round(moved.get(k, 0.0), 2)})
     last12 = rows[-12:]
     income = sum(r["money_in"] for r in last12)
     invested = sum(max(0.0, r["invested"]) for r in last12)

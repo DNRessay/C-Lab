@@ -175,3 +175,17 @@ def test_categoriser_rules_and_ai(monkeypatch):
     out = api.post("/api/bank/categorise", headers=h).json()
     assert out["ai"] == len(other) and out["left"] == 0
     db.close()
+
+
+def test_internal_transfers_are_not_income_or_spending():
+    from types import SimpleNamespace as T
+
+    from app.banking.reader import INVEST_RE, internal_pairs
+
+    txns = [T(id=1, account="TymeBank ••1", date=date(2026, 9, 1), amount=-500.0),   # to own GoTyme
+            T(id=2, account="GoTyme ••2", date=date(2026, 9, 2), amount=500.0),
+            T(id=3, account="TymeBank ••1", date=date(2026, 9, 3), amount=-500.0),   # paid someone, no match
+            T(id=4, account="TymeBank ••1", date=date(2026, 9, 3), amount=500.0),    # same account: not a move
+            T(id=5, account="Capitec ••3", date=date(2026, 9, 20), amount=500.0)]   # too late for id 3
+    assert internal_pairs(txns) == {1, 2}
+    assert INVEST_RE.search("Payment to EasyEquities ref EE123") and not INVEST_RE.search("Checkers")

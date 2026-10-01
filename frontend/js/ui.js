@@ -114,6 +114,7 @@ export function page(links = []) {
 const KEY_COLUMNS = ["Now", "Value", "Worth now", "Amount", "Type", "What", "Gain", "Last year", "Price", "Equity", "Dividends", "Fees"];
 
 function labelTable(table) {
+  if (table.closest(".md-table")) return;  // AI chat tables stay as tables
   const heads = [...table.querySelectorAll("thead th")].map((th) => th.textContent.trim());
   if (!heads.length) return;
   table.classList.add("stack");

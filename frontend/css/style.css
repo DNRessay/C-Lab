@@ -397,3 +397,16 @@ ul.plain li { padding: 0.45rem 0; border-bottom: 1px solid var(--line); line-hei
 .sent-bar { display: flex; height: 10px; border-radius: 6px; overflow: hidden; margin: 0.3rem 0; background: var(--panel-2); }
 .tech-card { cursor: pointer; }
 .tech-card:hover { border-color: var(--accent); }
+/* Ask AI fills the screen */
+#ai .chat-full { display: flex; flex-direction: column; height: calc(100dvh - 9rem); min-height: 420px; margin: 0; }
+#ai .chat-full .chat-log { flex: 1; max-height: none; }
+#ai .msg { max-width: min(92%, 900px); }
+.msg.assistant p { margin: 0.35rem 0; }
+.msg.assistant h3, .msg.assistant h4, .msg.assistant h5 { margin: 0.6rem 0 0.3rem; color: var(--accent); }
+.msg.assistant ul, .msg.assistant ol { margin: 0.3rem 0 0.3rem 1.1rem; padding: 0; }
+.msg.assistant li { margin: 0.15rem 0; }
+.msg.assistant code { background: var(--panel); padding: 0 0.25rem; border-radius: 4px; }
+.msg.assistant pre { white-space: pre-wrap; background: var(--panel); padding: 0.5rem; border-radius: 8px; }
+.md-table { margin: 0.4rem 0; }
+.md-table table { font-size: 0.85rem; }
+.md-table th, .md-table td { padding: 0.3rem 0.5rem; }

@@ -27,6 +27,24 @@
       </table></div>
       <div id="sum-markets"></div>
       <div id="pulse-markets"></div>
+      <div id="blog-wrap" hidden>
+        <h2>Dividends from EasyEquities</h2>
+        <p class="muted">Declared in EasyEquities' dividends updates. Own the share by the last day to trade to get paid. <span id="blog-note"></span></p>
+                <div class="row" style="margin-bottom:0.6rem"><label class="muted" for="blog-sort">Sort by</label>
+          <select id="blog-sort"><option value="date">Last day to trade</option><option value="yield">Yield (this dividend)</option>
+            <option value="yield12">Yield (12 months)</option><option value="season">Season paid</option><option value="amount">Dividend amount</option></select></div>
+        <div class="card table-wrap"><table>
+          <thead><tr><th>What</th><th class="num">Dividend</th><th class="num">Price (1 unit)</th><th class="num">Yield</th><th>Last day to trade</th><th>Paid</th><th>Status</th></tr></thead>
+          <tbody id="blog-rows"></tbody>
+        </table></div>
+        <details class="section" id="blog-paid-wrap" hidden><summary><span>Already paid</span><span class="count" id="cnt-blog-paid"></span></summary>
+          <div class="card table-wrap"><table>
+            <thead><tr><th>What</th><th class="num">Dividend</th><th class="num">Price (1 unit)</th><th class="num">Yield</th><th>Last day to trade</th><th>Paid</th><th>Status</th></tr></thead>
+            <tbody id="blog-paid-rows"></tbody>
+          </table></div></details>
+        <details class="section" id="blog-posts-wrap"><summary><span>Latest from EasyEquities</span><span class="count" id="cnt-blog"></span></summary>
+          <div class="grid" id="blog-posts"></div></details>
+      </div>
       <div class="card" id="tech-wrap" hidden>
         <div class="ai-head"><h3 id="tech-title">Technical view</h3><select id="tech-pick" aria-label="Pick a market or holding"></select></div>
         <p class="muted" id="tech-reads"></p>
@@ -92,30 +110,15 @@
       </div>
       <div id="sum-overview"></div>
       <div class="ai-box" id="ai-overview" data-section="overview"></div>
-      <div id="pulse-overview"></div>
       <div id="ee-overview" hidden>
         <h2>EasyEquities accounts</h2>
         <div class="card"><div class="chart-box short"><canvas id="account-chart" aria-label="Value per EasyEquities account" role="img"></canvas></div></div>
         <div class="grid" id="ee-accounts"></div>
       </div>
-      <div id="blog-wrap" hidden>
-        <h2>Dividends from EasyEquities</h2>
-        <p class="muted">Declared in EasyEquities' dividends updates. Own the share by the last day to trade to get paid. <span id="blog-note"></span></p>
-        <div class="grid" id="blog-mine"></div>
-        <div class="row" style="margin-bottom:0.6rem"><label class="muted" for="blog-sort">Sort by</label>
-          <select id="blog-sort"><option value="date">Last day to trade</option><option value="yield">Yield (this dividend)</option>
-            <option value="yield12">Yield (12 months)</option><option value="season">Season paid</option><option value="amount">Dividend amount</option></select></div>
-        <div class="card table-wrap"><table>
-          <thead><tr><th>What</th><th class="num">Dividend</th><th class="num">Price (1 unit)</th><th class="num">Yield</th><th>Last day to trade</th><th>Paid</th><th>Status</th></tr></thead>
-          <tbody id="blog-rows"></tbody>
-        </table></div>
-        <details class="section" id="blog-paid-wrap" hidden><summary><span>Already paid</span><span class="count" id="cnt-blog-paid"></span></summary>
-          <div class="card table-wrap"><table>
-            <thead><tr><th>What</th><th class="num">Dividend</th><th class="num">Price (1 unit)</th><th class="num">Yield</th><th>Last day to trade</th><th>Paid</th><th>Status</th></tr></thead>
-            <tbody id="blog-paid-rows"></tbody>
-          </table></div></details>
-        <details class="section" id="blog-posts-wrap"><summary><span>Latest from EasyEquities</span><span class="count" id="cnt-blog"></span></summary>
-          <div class="grid" id="blog-posts"></div></details>
+      <div id="my-divs-wrap" hidden>
+        <h2>Your dividends</h2>
+        <p class="muted">From EasyEquities' dividends updates, for shares you hold or watch. The full list is on <a href="#markets">Markets</a>.</p>
+        <div class="grid" id="my-divs"></div>
       </div>
       <div id="decisions-wrap" hidden>
         <h2>Needs your decision</h2>
@@ -482,7 +485,7 @@
     </section>
     <!-- Ask AI -->
     <section id="ai" hidden>
-      <div class="card chat">
+      <div class="card chat chat-full">
         <div id="chat-log" class="chat-log" aria-live="polite"></div>
         <div class="chips" id="chat-chips"></div>
         <form id="chat-form" class="chat-form">
@@ -514,7 +517,6 @@
       renderBlog(s.blog);
       api.investMoney().then(mp => renderMoney(mp, s)).catch(e => flash(e.message, "err"));
       summaryOverview(s);
-      loadPulse("#pulse-overview", true).catch(() => {});
       summaryHoldings(s);
       renderCharts(s);
       renderHoldingCharts(s);
@@ -705,6 +707,7 @@
         <td class="num"><small>${m.low_52w != null ? `${fmt(m, m.low_52w)} – ${fmt(m, m.high_52w)}` : ""}</small></td></tr>`).join("");
       summaryMarkets(markets);
       loadPulse("#pulse-markets", false).catch(() => {});
+      api.blog().then(renderBlog).catch(() => {});
     }
 
     // account
@@ -1360,7 +1363,8 @@
       $("#blog-wrap").hidden = !(b && (b.upcoming.length || b.posts.length));
       if (!b) return;
       const mine = b.upcoming.filter(d => d.mine && d.state !== "paid");
-      $("#blog-mine").innerHTML = mine.map(d => `<div class="card stat"><div class="value">${d.estimate != null ? money(d.estimate) : divAmt(d)}</div>
+      $("#my-divs-wrap").hidden = !mine.length;
+      $("#my-divs").innerHTML = mine.map(d => `<div class="card stat"><div class="value">${d.estimate != null ? money(d.estimate) : divAmt(d)}</div>
         <div class="label"><strong>${esc(d.instrument)}</strong> ${badge(...MINE[d.mine])}<br>${d.estimate != null ? `${units(d.units)} × ${divAmt(d)} · ` : ""}${d.state === "open" ? `buy by ${dayOr(d.ldt)}` : d.state === "paying" ? `paid ${dayOr(d.pay_date)}` : `paid on ${dayOr(d.pay_date)}`}</div></div>`).join("");
       const open = b.upcoming.filter(d => d.state === "open").length;
       $("#blog-note").textContent = b.upcoming.length ? (open ? `${open} still open.` : "Nothing open right now; these are the latest declared.") : "";
@@ -1472,7 +1476,7 @@
         ["In the bank", money(b.cash), `${b.accounts.filter(a => a.kind === "bank" && !a.hidden).length} account(s)`],
         ["Debt", `<span class="neg">${money(b.debt)}</span>`, `${b.accounts.filter(a => a.kind !== "bank").length} card/loan · ${b.liabilities.length} added`],
         ["Bank less debt", signed(b.cash - b.debt)],
-        last12.length && ["Money in", `<span class="pos">${money(inn)}</span>`, `${last12.length} month(s), transfers left out`],
+        last12.length && ["Money in", `<span class="pos">${money(inn)}</span>`, `${last12.length} month(s); moves between your own accounts left out`],
         last12.length && ["Money out", `<span class="neg">${money(out)}</span>`, `about ${money(out / last12.length)} a month`],
         last12.length && ["Kept", signed(inn - out), inn ? `${pctOf(inn - out, inn)} of what came in` : ""],
         ["Bank fees", `<span class="neg">${money(b.fees_12m)}</span>`, "last 12 months"],
@@ -1592,7 +1596,52 @@
     let chatMsgs = [];
     try { chatMsgs = JSON.parse(sessionStorage.getItem(CHAT_KEY) || "[]"); } catch { chatMsgs = []; }
     const saveChat = () => { try { sessionStorage.setItem(CHAT_KEY, JSON.stringify(chatMsgs.slice(-30))); } catch { /* private mode */ } };
-    const fmtReply = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/^\s*[-*] (.+)$/gm, "• $1").replace(/\n/g, "<br>");
+    // Small Markdown renderer for AI replies: headings, tables, lists, bold/italic, code, links. Input is escaped first.
+    function md(src) {
+      const inline = (t) => esc(t)
+        .replace(/`([^`]+)`/g, "<code>$1</code>")
+        .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+        .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>")
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+      const lines = String(src || "").replace(/\r/g, "").split("\n");
+      let html = "", i = 0;
+      const isRow = (l) => /^\s*\|.*\|\s*$/.test(l);
+      while (i < lines.length) {
+        const l = lines[i];
+        if (/^\s*```/.test(l)) {
+          let code = []; i++;
+          while (i < lines.length && !/^\s*```/.test(lines[i])) code.push(lines[i++]);
+          html += `<pre><code>${esc(code.join("\n"))}</code></pre>`; i++; continue;
+        }
+        if (isRow(l) && i + 1 < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1])) {
+          const cells = (r) => r.trim().replace(/^\||\|$/g, "").split("|").map(c => c.trim());
+          const head = cells(l); i += 2;
+          let body = "";
+          while (i < lines.length && isRow(lines[i])) {
+            body += `<tr>${cells(lines[i]).map(c => `<td class="${/^[-−R$£€\d][\d\s.,%R$£€−-]*$/.test(c) ? "num" : ""}">${inline(c)}</td>`).join("")}</tr>`; i++;
+          }
+          html += `<div class="table-wrap md-table"><table><thead><tr>${head.map(h => `<th>${inline(h)}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div>`;
+          continue;
+        }
+        const h = l.match(/^\s*(#{1,4})\s+(.*)$/);
+        if (h) { html += `<h${Math.min(h[1].length + 2, 6)}>${inline(h[2])}</h${Math.min(h[1].length + 2, 6)}>`; i++; continue; }
+        if (/^\s*([-*•]|\d+[.)])\s+/.test(l)) {
+          const ordered = /^\s*\d+[.)]/.test(l), tag = ordered ? "ol" : "ul";
+          let items = "";
+          while (i < lines.length && /^\s*([-*•]|\d+[.)])\s+/.test(lines[i])) {
+            items += `<li>${inline(lines[i].replace(/^\s*([-*•]|\d+[.)])\s+/, ""))}</li>`; i++;
+          }
+          html += `<${tag}>${items}</${tag}>`; continue;
+        }
+        if (/^\s*(---|\*\*\*)\s*$/.test(l)) { html += "<hr>"; i++; continue; }
+        if (!l.trim()) { i++; continue; }
+        let para = [];
+        while (i < lines.length && lines[i].trim() && !isRow(lines[i]) && !/^\s*(#{1,4}\s|[-*•]\s|\d+[.)]\s|```)/.test(lines[i])) para.push(lines[i++]);
+        html += `<p>${para.map(inline).join("<br>")}</p>`;
+      }
+      return html;
+    }
+    const fmtReply = md;
     function renderChat(thinking = false) {
       $("#chat-log").innerHTML = chatMsgs.map(m => `<div class="msg ${m.role}">${m.role === "user" ? esc(m.content) : fmtReply(m.content)}</div>`).join("")
         + (thinking ? `<div class="msg assistant muted">Thinking…</div>` : "")

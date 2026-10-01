@@ -335,22 +335,51 @@ def status(db: Session, user_id: int):
                           None)}
 
 
+INVEST_RE = re.compile(r"easy\s?equities|first world trader|easyproperties|easy\s?properties|\bfwt\b|easycrypto|"
+                       r"\bsatrix\b|etfsa|\b10x\b|sygnia|allan gray|coronation|tfsa", re.I)
+
+
+def internal_pairs(txns, days=3):
+    """Ids of money moved between your own accounts: an amount leaving one account and the same amount arriving
+    in another account within a few days. Those aren't income or spending."""
+    ins = defaultdict(list)
+    for t in txns:
+        if t.amount > 0:
+            ins[round(t.amount, 2)].append(t)
+    used = set()
+    for o in sorted((t for t in txns if t.amount < 0), key=lambda t: (t.date, t.id)):
+        for t in sorted(ins.get(round(-o.amount, 2), []), key=lambda t: t.date):
+            if t.id not in used and t.account != o.account and 0 <= (t.date - o.date).days <= days:
+                used.update((t.id, o.id))
+                break
+    return used
+
+
 def charts(db: Session, user_id: int, months=24):
-    """Per month: money in, money out (spending, excl. transfers), fees; spending by category (last 12 months)."""
+    """Per month: income, spending (with fees), bank fees, money into / out of investments, and money moved between
+    your own accounts (left out of income and spending). Spending by category for the last 12 months."""
     start = (date.today().replace(day=1) - timedelta(days=31 * (months - 1))).replace(day=1)
-    txns = list(db.scalars(select(BankTxn).where(BankTxn.user_id == user_id, BankTxn.date >= start)))
-    by_month = defaultdict(lambda: {"in": 0.0, "out": 0.0, "fees": 0.0, "transfers_in": 0.0, "transfers_out": 0.0})
+    txns = list(db.scalars(select(BankTxn).where(BankTxn.user_id == user_id, BankTxn.date >= start - timedelta(days=5))))
+    internal = internal_pairs(txns)
+    by_month = defaultdict(lambda: {"in": 0.0, "out": 0.0, "fees": 0.0, "invested": 0.0, "from_investments": 0.0,
+                                    "internal": 0.0})
     cats = defaultdict(float)
     year_ago = date.today() - timedelta(days=365)
     for t in txns:
+        if t.date < start:
+            continue
         m = by_month[t.date.strftime("%Y-%m")]
-        transfer = t.category == "Transfers"
-        if t.amount >= 0:
-            m["transfers_in" if transfer else "in"] += t.amount
+        to_invest = bool(INVEST_RE.search(t.description or ""))
+        if t.id in internal:
+            m["internal"] += abs(t.amount)
+        elif t.amount >= 0:
+            m["from_investments" if to_invest else "in"] += t.amount
+        elif to_invest:
+            m["invested"] += -t.amount
         else:
-            m["transfers_out" if transfer else "out"] += -t.amount
-            if t.date >= year_ago and not transfer:
-                cats[t.category] += -t.amount
+            m["out"] += -t.amount
+            if t.date >= year_ago:
+                cats["Sent to people" if t.category == "Transfers" else t.category] += -t.amount
         fee = t.fee or (-t.amount if t.category == "Bank fees" and t.amount < 0 else 0.0)
         m["fees"] += fee
         if t.fee:
