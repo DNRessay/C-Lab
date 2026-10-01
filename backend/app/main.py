@@ -221,6 +221,14 @@ def admin(event):
             from .banking import reader as bank_reader
 
             return {"ok": True, **bank_reader.reparse(db, user.id, only_empty=bool(event.get("only_empty")))}
+        if event.get("action") == "rewarm_ai":
+            # Numbers changed: drop this person's saved suggestions and chat answers, then make fresh ones.
+            from .ai.router import AIChatCache, AISuggestion, warm_all
+
+            db.query(AISuggestion).filter(AISuggestion.user_id == user.id).delete()
+            db.query(AIChatCache).filter(AIChatCache.user_id == user.id).delete()
+            db.commit()
+            return {"ok": True, "made": warm_all(db, deadline=time.time() + 240)}
         if event.get("action") == "tidy_bank":
             from .banking.categorize import tidy
 
