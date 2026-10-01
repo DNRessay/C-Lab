@@ -236,6 +236,12 @@ def admin(event):
             from .banking.reader import redetect_kinds
 
             changed = redetect_kinds(db, user.id) if event.get("redetect") else 0
+            if event.get("all_debit"):  # the person says every account is a debit/bank account
+                for a in db.scalars(select(BankAccount).where(BankAccount.user_id == user.id)):
+                    if a.kind != "bank":
+                        a.kind, a.kind_set = "bank", True
+                        changed += 1
+                db.commit()
             return {"ok": True, "changed": changed, "accounts": [
                 {"account": a.account[-8:], "bank": a.bank, "kind": a.kind, "kind_set": a.kind_set, "hidden": a.hidden,
                  "balance": a.balance, "balance_date": str(a.balance_date)} for a in db.scalars(select(BankAccount).where(BankAccount.user_id == user.id))]}
