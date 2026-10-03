@@ -111,6 +111,10 @@ def platform_view(db: Session, conn: EEConnection):
                          "value_zar": value, "cost_zar": cost, "gain_zar": value - cost})
         value = (acc.get("value") or 0) * rate
         holdings_value = sum(r["value_zar"] for r in rows)
+        if value < holdings_value - max(2.0, 0.02 * holdings_value):
+            # EasyEquities' account value can be stale or not the total (seen: R14 for an account holding R125);
+            # a wallet isn't R100 overdrawn, so count no cash rather than a large negative.
+            value = holdings_value
         total += value
         accounts.append({"id": acc.get("id"), "name": acc.get("name"), "currency": cur, "rate": rate,
                          "value": acc.get("value"), "value_zar": value, "holdings": rows,

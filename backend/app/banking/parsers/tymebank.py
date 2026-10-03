@@ -6,7 +6,8 @@ from .common import make_txn
 
 log = logging.getLogger(__name__)
 
-AMT = r"(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d{2})?"
+# TymeBank prints every amount with cents; a bare number is a card or reference number, never money.
+AMT = r"(?:\d{1,3}(?:,\d{3})*|\d+)\.\d{2}"
 SLOT = rf"(-|{AMT})"
 LAST = rf"({AMT})"
 DATE_START = re.compile(r"^(\d{1,2}\s+\w{3}\s+\d{4})\s+(.+)")

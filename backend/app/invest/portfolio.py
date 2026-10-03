@@ -455,15 +455,18 @@ def money_picture(db: Session, user_id: int, months=24):
                      "property": round(own_equity, 2),
                      "net_worth": round(inv + b["cash"] + own_equity - b["debt"] - manual_debt, 2),
                      "money_in": f.get("in", 0.0), "money_out": f.get("out", 0.0), "fees": f.get("fees", 0.0),
+                     # Balance rose by more than the statement lines explain (money from people the statements miss).
+                     "unrecorded_in": f.get("unrecorded_in", 0.0),
                      # Money into investments: seen in the bank lines if there are any that month, else the statements.
                      "invested": round(f["invested"] - f["from_investments"], 2) if f.get("invested") or f.get("from_investments")
                      else round(moved.get(k, 0.0), 2)})
     last12 = rows[-12:]
     income = sum(r["money_in"] for r in last12)
+    unrecorded = sum(r["unrecorded_in"] for r in last12)
     invested = sum(max(0.0, r["invested"]) for r in last12)
     fees = sum(r["fees"] for r in last12)
     spent = max(0.0, sum(r["money_out"] for r in last12) - fees)
-    kept = income - spent - fees - invested
+    kept = income + unrecorded - spent - fees - invested
     return {"months": rows, "since": keys[0] if keys else None,
-            "income_12m": {"income": round(income, 2), "spent": round(spent, 2), "fees": round(fees, 2),
-                           "invested": round(invested, 2), "kept": round(kept, 2)}}
+            "income_12m": {"income": round(income, 2), "not_on_statements": round(unrecorded, 2), "spent": round(spent, 2),
+                           "fees": round(fees, 2), "invested": round(invested, 2), "kept": round(kept, 2)}}

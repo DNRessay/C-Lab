@@ -46,8 +46,10 @@ def build(db: Session, user_id: int) -> dict:
             "debts_added": [{"type": m.kind, "owing": _r(m.balance), "rate_pct": m.rate, "monthly": m.monthly}
                             for m in pos["liabilities"]],
             "last_12_months": money["income_12m"],
+            "money_in_by_category_12m": dict(list(bank["income_categories"].items())[:10]),
             "spending_by_category_12m": dict(list(bank["categories"].items())[:10]),
-            "monthly": [{"month": m["month"], "in": m["in"], "out": m["out"], "fees": m["fees"]} for m in bank["months"][-12:]],
+            "monthly": [{"month": m["month"], "in": m["in"], "not_on_statements": m["unrecorded_in"], "out": m["out"],
+                         "fees": m["fees"]} for m in bank["months"][-12:]],
         },
         "month_by_month": [{k: r[k] for k in ("month", "investments", "bank", "debt", "net_worth", "invested")}
                            for r in money["months"][-12:]],

@@ -118,7 +118,7 @@ TOOLS = [
           {"symbol": _S}, ["symbol"]),
     _tool("watchlist", "Watchlist", "Watched shares with moves, yields and price alerts."),
     _tool("properties", "Property", "Each property: value, bond, equity, loan-to-value, yields and monthly cash flow."),
-    _tool("bank_spending", "Bank spending", "Money in and out per month, fees, and spending by category from bank statements.",
+    _tool("bank_spending", "Bank spending", "Money in and out per month, fees, money in by category (incl. received from people) and spending by category from bank statements.",
           {"months": _I}),
     _tool("bank_transactions", "Bank transactions", "Recent bank transactions, optionally filtered by text or category.",
           {"limit": _I, "search": _S, "category": _S}),
@@ -159,7 +159,8 @@ def call_tool(name: str, args: dict, user: User, db: Session):
     if name == "bank_spending":
         months = max(1, min(int(args.get("months") or 12), 36))
         c = bank_charts(db, user.id, months)
-        return {"months": c.get("months"), "spending_by_category": c.get("categories")}
+        return {"months": c.get("months"), "money_in_by_category": c.get("income_categories"),
+                "spending_by_category": c.get("categories")}
     if name == "bank_transactions":
         q = select(BankTxn).where(BankTxn.user_id == user.id)
         if args.get("category"):
