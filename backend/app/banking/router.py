@@ -86,8 +86,8 @@ def categorise_now(user: User = Depends(current_user), db: Session = Depends(get
     """'Tidy categories': re-read the stored statements with the current parsers, then re-categorise."""
     from .categorize import tidy
 
-    reread = reader.reparse(db, user.id)["reparsed"]
-    return {"reread_statements": reread, **tidy(db, user.id)}
+    reread = reader.reparse(db, user.id)
+    return {"reread_statements": reread["reparsed"], "to_download": reread["to_download"], **tidy(db, user.id)}
 
 
 class TxnPatch(BaseModel):

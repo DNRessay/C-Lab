@@ -152,3 +152,30 @@ def test_gotyme_text_reader_keeps_each_pocket_apart():
         ("Transfer to Current account", 500.33, "debit", 0.0, "1894"),
         ("Transfer from Current account", 1200.0, "credit", 1200.0, "2678"),
     ]
+
+
+def test_gotyme_read_from_text_is_queued_for_download_not_reparsed():
+    from app.banking.models import BankStatement, BankTxn
+    from app.db import SessionLocal
+    from app.models import User
+
+    db = SessionLocal()
+    user = User(email="gotext@money.example.com", first_name="Go", last_name="Text", password="x")
+    db.add(user)
+    db.flush()
+    uid = user.id
+    bad = BankStatement(user_id=uid, gmail_id="g1", filename="a.pdf", bank="gotyme", status="ok", body="x", rows=2)
+    good = BankStatement(user_id=uid, gmail_id="g2", filename="b.pdf", bank="gotyme", status="ok", body="y", rows=1)
+    db.add_all([bad, good])
+    db.flush()
+    db.add_all([BankTxn(user_id=uid, statement_id=bad.id, key="k1", bank="gotyme", account="GoTyme ••1", date=date(2026, 7, 6),
+                        description="Money transferred in for GoalSave 50883810179 -", amount=500.0, category="Transfers"),
+                BankTxn(user_id=uid, statement_id=good.id, key="k2", bank="gotyme", account="GoTyme ••1", date=date(2026, 7, 6),
+                        description="Money transferred in for GoalSave 50883810179", amount=-500.0, category="Transfers")])
+    db.commit()
+    out = reader.reparse(db, uid)
+    assert out["to_download"] == 1 and out["reparsed"] == 0
+    db.refresh(bad), db.refresh(good)
+    assert (bad.status, good.status) == ("reread", "ok")
+    assert db.query(BankTxn).filter(BankTxn.user_id == uid).count() == 2  # kept until the PDF is read again
+    db.close()

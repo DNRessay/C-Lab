@@ -34,7 +34,7 @@ def extract_text(pdf_bytes, passwords=()):
     return "\n".join(page.extract_text() or "" for page in reader.pages), pw
 
 
-TEXT_PARSERS = {"tymebank": TymeBankLegacyParser, "capitec": CapitecParser, "gotyme": GoTymeTextParser,
+TEXT_PARSERS = {"tymebank": TymeBankLegacyParser, "capitec": CapitecParser,
                 "generic": GenericParser}
 
 

@@ -313,19 +313,29 @@ def read_batch(db: Session, user_id: int, limit=15):
     return {"ok": True, "found": len(ids), "read_now": read_now, "rows_now": rows_now, "left": left}
 
 
+def _read_from_text(db: Session, st: BankStatement):
+    """True when a GoTyme statement's rows came from its text, which loses the PDF's columns (wrapped
+    reference numbers become rows, the '-' of an empty column lands in the description, signs flip)."""
+    descs = db.scalars(select(BankTxn.description).where(BankTxn.statement_id == st.id))
+    return any(d.endswith(" -") or d.strip().isdigit() for d in descs)
+
+
 def reparse(db: Session, user_id: int, only_empty=False):
-    """Re-run the text parsers over stored statements (GoTyme too: its text reader matches the PDF one)."""
-    n = 0
+    """Re-run the text parsers over stored statements. GoTyme needs the PDF's column positions, so a GoTyme
+    statement that was read from text is queued to be downloaded again by the next 'Read bank statements'."""
+    n = queued = 0
     for st in db.scalars(select(BankStatement).where(BankStatement.user_id == user_id, BankStatement.status == "ok")):
         if only_empty and st.rows:
             continue
-        rows = parsers.parse_text(st.body, st.bank)
-        if st.bank == "gotyme" and len(rows) < st.rows:
-            continue  # the PDF reader found more on this one: keep its rows
-        save(db, st, st.body, rows)
+        if st.bank == "gotyme":
+            if _read_from_text(db, st):
+                st.status = "reread"
+                queued += 1
+            continue
+        save(db, st, st.body, parsers.parse_text(st.body, st.bank))
         n += 1
     db.commit()
-    return {"reparsed": n, **{k: v for k, v in status(db, user_id).items() if k != "last_read"}}
+    return {"reparsed": n, "to_download": queued, **{k: v for k, v in status(db, user_id).items() if k != "last_read"}}
 
 
 def shape(db: Session, user_id: int, index=0, start=0, count=120):
