@@ -465,6 +465,10 @@
           <div class="chart-box short"><canvas id="bank-flow-chart" role="img" aria-label="Money in and out per month, transfers left out"></canvas></div>
         </div>
         <div class="card">
+          <h3>Where the money came from (last 12 months)</h3>
+          <div class="pie-row"><div class="pie-box"><canvas id="bank-in-chart" role="img" aria-label="Money in by source"></canvas></div><ul class="pie-legend" id="bank-in-legend"></ul></div>
+        </div>
+        <div class="card">
           <h3>Where the money went (last 12 months)</h3>
           <div class="pie-row"><div class="pie-box"><canvas id="bank-cat-chart" role="img" aria-label="Spending by category"></canvas></div><ul class="pie-legend" id="bank-cat-legend"></ul></div>
         </div>
@@ -1277,7 +1281,11 @@
       $("#bank-charts").hidden = !(b.accounts.length || b.liabilities.length || b.months.length);
       hbar("#bank-worth-chart", ["Investments + property", "Bank", "Debt"], [own, b.cash, -b.debt],
         [css("--series-1"), css("--series-2"), css("--neg")]);
-      upDownChart("#bank-flow-chart", b.months.map(m => m.month), b.months.map(m => m.in), b.months.map(m => m.out), "In", "Out");
+      // Money in includes what reached the accounts without a statement line (balances rose by more than the lines explain).
+      upDownChart("#bank-flow-chart", b.months.map(m => m.month), b.months.map(m => m.in + (m.unrecorded_in || 0)), b.months.map(m => m.out), "In", "Out");
+      const incats = Object.entries(b.income_categories || {}).map(([label, value]) => ({ label, value }));
+      $("#bank-in-chart").closest(".card").hidden = !incats.length;
+      if (incats.length) pie("#bank-in-chart", "#bank-in-legend", incats);
       const cats = Object.entries(b.categories).map(([label, value]) => ({ label, value }));
       $("#bank-cat-chart").closest(".card").hidden = !cats.length;
       if (cats.length) pie("#bank-cat-chart", "#bank-cat-legend", cats);
@@ -1568,13 +1576,18 @@
     }
 
     function summaryBanking(b) {
-      const last12 = b.months.slice(-12), inn = last12.reduce((a, m) => a + m.in, 0), out = last12.reduce((a, m) => a + m.out, 0);
+      const last12 = b.months.slice(-12), out = last12.reduce((a, m) => a + m.out, 0);
+      const offStatements = last12.reduce((a, m) => a + (m.unrecorded_in || 0), 0);
+      const inn = last12.reduce((a, m) => a + m.in, 0) + offStatements;
+      const fromPeople = (b.income_categories || {})["Received from people"] || 0;
       const cats = Object.entries(b.categories), [bigCat, bigAmt] = cats[0] || [];
       summary("#sum-banking", [
         ["In the bank", money(b.cash), `${b.accounts.filter(a => a.kind === "bank" && !a.hidden).length} account(s)`],
         ["Debt", `<span class="neg">${money(b.debt)}</span>`, `${b.accounts.filter(a => a.kind !== "bank").length} card/loan · ${b.liabilities.length} added`],
         ["Bank less debt", signed(b.cash - b.debt)],
         last12.length && ["Money in", `<span class="pos">${money(inn)}</span>`, `${last12.length} month(s); moves between your own accounts left out`],
+        fromPeople > 0 && ["Received from people", `<span class="pos">${money(fromPeople)}</span>`, `vs ${money(b.categories["Sent to people"] || 0)} sent to people`],
+        offStatements > 0 && ["Not on your statements", `<span class="pos">${money(offStatements)}</span>`, "your balances rose by this much more than the statement lines explain"],
         last12.length && ["Money out", `<span class="neg">${money(out)}</span>`, `about ${money(out / last12.length)} a month`],
         last12.length && ["Kept", signed(inn - out), inn ? `${pctOf(inn - out, inn)} of what came in` : ""],
         ["Bank fees", `<span class="neg">${money(b.fees_12m)}</span>`, "last 12 months"],

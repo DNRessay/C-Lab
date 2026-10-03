@@ -157,8 +157,13 @@ def ai_pass(db: Session, user_id: int, max_batches=10):
 
 
 def tidy(db: Session, user_id: int):
-    from .reader import redetect_kinds
+    from .reader import SUMMARY_RE, redetect_kinds
 
+    # Statement summary lines ("Summary Opening balance") read as payments by older parsers.
+    for t in db.scalars(select(BankTxn).where(BankTxn.user_id == user_id)):
+        if SUMMARY_RE.search(t.description or ""):
+            db.delete(t)
+    db.flush()
     redetect_kinds(db, user_id)
     changed = recategorise(db, user_id)
     return {"rules_and_keywords": changed, **ai_pass(db, user_id)}

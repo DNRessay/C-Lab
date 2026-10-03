@@ -83,9 +83,11 @@ def category_names(user: User = Depends(current_user), db: Session = Depends(get
 
 @router.post("/categorise")
 def categorise_now(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """'Tidy categories': re-read the stored statements with the current parsers, then re-categorise."""
     from .categorize import tidy
 
-    return tidy(db, user.id)
+    reread = reader.reparse(db, user.id)["reparsed"]
+    return {"reread_statements": reread, **tidy(db, user.id)}
 
 
 class TxnPatch(BaseModel):

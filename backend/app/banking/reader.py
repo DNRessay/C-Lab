@@ -5,7 +5,7 @@ import hashlib
 import logging
 import re
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from email.utils import parsedate_to_datetime
 
 import requests
@@ -108,10 +108,23 @@ def redetect_kinds(db: Session, user_id: int):
     return changed
 
 
+# A statement's own summary lines ("Opening balance" etc.) — not money that moved.
+SUMMARY_RE = re.compile(r"\b(opening|closing|brought forward|carried forward|b/f|c/f)\s*balance\b|^\s*summary\b", re.I)
+FEE_LINE_RE = re.compile(r"^\s*fee\s*:|\(fee\)\s*$", re.I)
+# Moves between pockets of the same account (GoalSave, "Transfer to Current account"): never income or spending.
+OWN_MOVE_RE = re.compile(r"goalsave|savings pocket|\btransfer (?:to|from) (?:current|savings) account\b|own account|"
+                         r"between (?:your |my )?accounts|round-?up", re.I)
+# Money that came from (or went to) another person.
+PEOPLE_RE = re.compile(r"payshap|pay by shapid|pay by account|send ?money|cash ?send|\beft\b|received from|"
+                       r"immediate payment|instant payment|pay beneficiary|payment from", re.I)
+
+
 def categorise(description: str, parsed: str = "", amount: float = 0.0, rules=()) -> str:
-    """Your rules, then the bank's own label (Capitec prints one), then the keyword lists."""
+    """Bank fee lines first, then your rules, then the bank's own label (Capitec prints one), then the keyword lists."""
     from .categorize import categorise as by_keywords
 
+    if FEE_LINE_RE.search(description or ""):
+        return "Bank fees"
     low = " " + (description or "").lower() + " "
     for keyword, category in rules:
         if keyword and keyword in low:
@@ -141,6 +154,8 @@ def _key(user_id, account, row):
 def rows_from(parsed, kind, rules=()):
     out = []
     for r in parsed:
+        if SUMMARY_RE.search(r["description"] or ""):
+            continue  # "Summary Opening balance" is the statement's own total, not a payment
         amount = r["amount"] if r["type"] == "credit" else -r["amount"]
         fee = float(r.get("fee") or 0)
         desc = r["description"]
@@ -364,13 +379,14 @@ INVEST_RE = re.compile(r"easy\s?equities|first world trader|easyproperties|easy\
 
 def internal_pairs(txns, days=3):
     """Ids of money moved between your own accounts: an amount leaving one account and the same amount arriving
-    in another account within a few days. Those aren't income or spending."""
+    in another account within a few days, plus moves between pockets of one account (GoalSave and the like).
+    Those aren't income or spending."""
+    used = {t.id for t in txns if OWN_MOVE_RE.search(getattr(t, "description", "") or "")}
     ins = defaultdict(list)
     for t in txns:
-        if t.amount > 0:
+        if t.amount > 0 and t.id not in used:
             ins[round(t.amount, 2)].append(t)
-    used = set()
-    for o in sorted((t for t in txns if t.amount < 0), key=lambda t: (t.date, t.id)):
+    for o in sorted((t for t in txns if t.amount < 0 and t.id not in used), key=lambda t: (t.date, t.id)):
         for t in sorted(ins.get(round(-o.amount, 2), []), key=lambda t: t.date):
             if t.id not in used and t.account != o.account and 0 <= (t.date - o.date).days <= days:
                 used.update((t.id, o.id))
@@ -378,15 +394,27 @@ def internal_pairs(txns, days=3):
     return used
 
 
+def income_category(t) -> str:
+    """What an incoming line is, for the money-in breakdown: people who paid you are named as such."""
+    if t.category in ("Transfers", "Other income", "Payments") and PEOPLE_RE.search(t.description or ""):
+        return "Received from people"
+    if t.category in ("Transfers", "Other income"):
+        return "Other money in"
+    return t.category
+
+
 def charts(db: Session, user_id: int, months=24):
-    """Per month: income, spending (with fees), bank fees, money into / out of investments, and money moved between
-    your own accounts (left out of income and spending). Spending by category for the last 12 months."""
+    """Per month: income, spending (with fees), bank fees, money into / out of investments, money moved between
+    your own accounts (left out of income and spending), and money that reached your accounts without a statement
+    line saying where from ("unrecorded_in": the month-end balances rose by more than the statements explain).
+    Money in and money out by category for the last 12 months."""
     start = (date.today().replace(day=1) - timedelta(days=31 * (months - 1))).replace(day=1)
     txns = list(db.scalars(select(BankTxn).where(BankTxn.user_id == user_id, BankTxn.date >= start - timedelta(days=5))))
+    txns = [t for t in txns if not SUMMARY_RE.search(t.description or "")]
     internal = internal_pairs(txns)
     by_month = defaultdict(lambda: {"in": 0.0, "out": 0.0, "fees": 0.0, "invested": 0.0, "from_investments": 0.0,
-                                    "internal": 0.0})
-    cats = defaultdict(float)
+                                    "internal": 0.0, "unrecorded_in": 0.0})
+    cats, income_cats = defaultdict(float), defaultdict(float)
     year_ago = date.today() - timedelta(days=365)
     for t in txns:
         if t.date < start:
@@ -397,6 +425,8 @@ def charts(db: Session, user_id: int, months=24):
             m["internal"] += abs(t.amount)
         elif t.amount >= 0:
             m["from_investments" if to_invest else "in"] += t.amount
+            if not to_invest and t.date >= year_ago:
+                income_cats[income_category(t)] += t.amount
         elif to_invest:
             m["invested"] += -t.amount
         else:
@@ -409,8 +439,22 @@ def charts(db: Session, user_id: int, months=24):
             m["out"] += t.fee
             if t.date >= year_ago:
                 cats["Bank fees"] += t.fee
+    # Balances are the truth: where they rose by more than the lines explain, money came in off the statements.
+    balances = {b["month"]: b["cash"] - b["debt"] for b in month_balances(db, user_id, months + 1)}
+    for k in sorted(by_month):
+        y, mo = int(k[:4]), int(k[5:])
+        prev = f"{y - 1:04d}-12" if mo == 1 else f"{y:04d}-{mo - 1:02d}"
+        if k in balances and prev in balances and (balances[k] or balances[prev]):
+            m = by_month[k]
+            explained = m["in"] + m["from_investments"] - m["out"] - m["invested"]
+            gap = (balances[k] - balances[prev]) - explained
+            if gap > 1:
+                m["unrecorded_in"] = gap
+                if date(y, mo, 1) >= year_ago.replace(day=1):
+                    income_cats["Not on your statements"] += gap
     return {"months": [{"month": k, **{f: round(v, 2) for f, v in by_month[k].items()}} for k in sorted(by_month)],
-            "categories": {k: round(v, 2) for k, v in sorted(cats.items(), key=lambda kv: -kv[1])}}
+            "categories": {k: round(v, 2) for k, v in sorted(cats.items(), key=lambda kv: -kv[1])},
+            "income_categories": {k: round(v, 2) for k, v in sorted(income_cats.items(), key=lambda kv: -kv[1])}}
 
 
 def read_all(db: Session):
