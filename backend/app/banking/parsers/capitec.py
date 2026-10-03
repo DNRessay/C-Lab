@@ -7,9 +7,10 @@ from .common import make_txn
 log = logging.getLogger(__name__)
 
 # Capitec's Transaction History: Date | Description | Category | Money In | Money Out | Fee* | Balance.
-# Money out and fees are printed negative, thousands are separated by spaces ("3 465.00", "-36 800.16"),
+# Money out and fees are printed negative, thousands are separated by spaces ("3 465.00", "-36 800.16"; older
+# statements use commas, "20,000.00"),
 # and a description can wrap over several lines with the amounts on the last one.
-MONEY = r"-?\d{1,3}(?: \d{3})*\.\d{2}"
+MONEY = r"-?\d{1,3}(?:[ ,]\d{3})*\.\d{2}"
 TAIL = re.compile(rf"((?:\s+{MONEY})+)\s*$")
 NUMBER = re.compile(MONEY)
 ROW = re.compile(r"^(\d{2}/\d{2}/\d{4})\s+(.*)$")
@@ -31,7 +32,7 @@ CATEGORY_MAP = {"Transfer": "Transfer", "Cash Withdrawal": "Withdrawal", "Prepai
 
 
 def _money(s):
-    return float(s.replace(" ", ""))
+    return float(s.replace(" ", "").replace(",", ""))
 
 
 def split_category(text):

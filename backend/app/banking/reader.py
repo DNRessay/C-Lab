@@ -179,6 +179,7 @@ def save(db: Session, st: BankStatement, text: str, parsed):
     for r in rows:
         digits = re.sub(r"\D", "", r["account_number"])
         r["account"] = f"{NAMES.get(st.bank, st.bank.title())} ••{digits[-4:]}" if len(digits) >= 4 else st.account
+    db.flush()  # rows added for an earlier statement in this session must count as already stored
     db.query(BankTxn).filter(BankTxn.statement_id == st.id).delete()
     have = set(db.scalars(select(BankTxn.key).where(BankTxn.user_id == st.user_id)))
     seen_here = defaultdict(int)
