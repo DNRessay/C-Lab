@@ -135,6 +135,13 @@ def market_pulse(refresh: bool = False, user: User = Depends(current_user), db: 
     return pulse.get(db, names, refresh)
 
 
+@router.get("/deals")
+def company_deals(refresh: bool = False, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from . import deals
+
+    return deals.get(db, refresh)
+
+
 @router.get("/technical/{symbol}")
 def technical_chart(symbol: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
     from . import pulse
