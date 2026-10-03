@@ -445,13 +445,57 @@ def internal_pairs(txns, days=3, own=None):
     return used
 
 
-def income_category(t) -> str:
-    """What an incoming line is, for the money-in breakdown: people who paid you are named as such."""
-    if t.category in ("Transfers", "Other income", "Payments", "Income") and PEOPLE_RE.search(t.description or ""):
-        return "Received from people"
-    if t.category in ("Transfers", "Other income"):
-        return "Other money in"
-    return t.category
+SALARY_RE = re.compile(r"salary|salaries|wages?\b|payroll|learnership|stipend|internship", re.I)
+GRANT_RE = re.compile(r"\bsassa\b|\bsrd\b|grant|nsfas|\buif\b", re.I)
+PAYER_RES = [re.compile(r"pay by (?:shapid|account),\s*([^-]+)", re.I),
+             re.compile(r"(?:payment )?received(?: from)?:?\s*(.+)", re.I),
+             re.compile(r"payment from\s*(.+)", re.I)]
+NOT_MONEY_IN = {"Transfers", "Other income", "Payments", "Income", "Other", "Interest"}
+
+
+def payer(description: str) -> str:
+    """Who paid: 'PayShap - Pay by ShapID, M NYOBOL -' -> 'M Nyobol'; 'Payment Received: Paypal Xhv Transfer 12' -> 'PayPal'."""
+    d = description or ""
+    if re.search(r"paypal", d, re.I):
+        return "PayPal"
+    if re.search(r"payshap payment received", d, re.I):
+        return ""  # Capitec shows the sender's reference here ("Ohkay"), not who sent it
+    for rx in PAYER_RES:
+        if (m := rx.search(d)):
+            words = [w for w in re.split(r"[\s:,]+", m.group(1)) if w and not re.search(r"\d", w)
+                     and w.lower() not in ("transfer", "payment", "ref", "reference", "-")]
+            if words:
+                return " ".join(words[:3]).title()
+    return ""
+
+
+def income_category(t, regular=frozenset()) -> str:
+    """Where money in came from: salary or stipend, grants, each regular payer by name, once-off payments,
+    refunds (money back on a purchase), interest, or an unknown source when the bank doesn't say."""
+    d = t.description or ""
+    if SALARY_RE.search(d):
+        return "Salary & stipends"
+    if GRANT_RE.search(d):
+        return "Grants"
+    if t.category == "Interest":
+        return "Interest"
+    if t.category not in NOT_MONEY_IN or re.search(r"refund|reversal|correction", d, re.I):
+        return "Refunds & reversals"  # money in on a shop, airtime or restaurant line is money back
+    who = payer(d)
+    if who and who in regular:
+        return f"{who} (regular)"
+    if who:
+        return "Once-off payments"
+    return "Unknown source"  # a PayShap or transfer that doesn't say who sent it
+
+
+def regular_payers(txns, months=3):
+    """Payers seen in at least `months` different months: an employer, a grant, someone who supports you."""
+    seen = defaultdict(set)
+    for t in txns:
+        if (who := payer(t.description)):
+            seen[who].add(t.date.strftime("%Y-%m"))
+    return frozenset(w for w, ms in seen.items() if len(ms) >= months)
 
 
 def charts(db: Session, user_id: int, months=24):
@@ -467,6 +511,8 @@ def charts(db: Session, user_id: int, months=24):
                                     "internal": 0.0, "unrecorded_in": 0.0})
     cats, income_cats = defaultdict(float), defaultdict(float)
     year_ago = date.today() - timedelta(days=365)
+    regular = regular_payers([t for t in txns if t.amount > 0 and t.date >= year_ago and t.id not in internal
+                              and not INVEST_RE.search(t.description or "")])
     for t in txns:
         if t.date < start:
             continue
@@ -477,7 +523,7 @@ def charts(db: Session, user_id: int, months=24):
         elif t.amount >= 0:
             m["from_investments" if to_invest else "in"] += t.amount
             if not to_invest and t.date >= year_ago:
-                income_cats[income_category(t)] += t.amount
+                income_cats[income_category(t, regular)] += t.amount
         elif to_invest:
             m["invested"] += -t.amount
         else:
@@ -502,7 +548,7 @@ def charts(db: Session, user_id: int, months=24):
             if gap > 1:
                 m["unrecorded_in"] = gap
                 if date(y, mo, 1) >= year_ago.replace(day=1):
-                    income_cats["Not on your statements"] += gap
+                    income_cats["Unknown source"] += gap
     return {"months": [{"month": k, **{f: round(v, 2) for f, v in by_month[k].items()}} for k in sorted(by_month)],
             "categories": {k: round(v, 2) for k, v in sorted(cats.items(), key=lambda kv: -kv[1])},
             "income_categories": {k: round(v, 2) for k, v in sorted(income_cats.items(), key=lambda kv: -kv[1])}}

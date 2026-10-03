@@ -1579,15 +1579,18 @@
       const last12 = b.months.slice(-12), out = last12.reduce((a, m) => a + m.out, 0);
       const offStatements = last12.reduce((a, m) => a + (m.unrecorded_in || 0), 0);
       const inn = last12.reduce((a, m) => a + m.in, 0) + offStatements;
-      const fromPeople = (b.income_categories || {})["Received from people"] || 0;
+      const incomeCats = Object.entries(b.income_categories || {});
+      const regular = incomeCats.filter(([k]) => /\(regular\)$|^Salary|^Grants/.test(k)).reduce((a, [, v]) => a + v, 0);
+      const onceOff = (b.income_categories || {})["Once-off payments"] || 0;
       const cats = Object.entries(b.categories), [bigCat, bigAmt] = cats[0] || [];
       summary("#sum-banking", [
         ["In the bank", money(b.cash), `${b.accounts.filter(a => a.kind === "bank" && !a.hidden).length} account(s)`],
         ["Debt", `<span class="neg">${money(b.debt)}</span>`, `${b.accounts.filter(a => a.kind !== "bank").length} card/loan · ${b.liabilities.length} added`],
         ["Bank less debt", signed(b.cash - b.debt)],
         last12.length && ["Money in", `<span class="pos">${money(inn)}</span>`, `${last12.length} month(s); moves between your own accounts left out`],
-        fromPeople > 0 && ["Received from people", `<span class="pos">${money(fromPeople)}</span>`, `vs ${money(b.categories["Sent to people"] || 0)} sent to people`],
-        offStatements > 0 && ["Not on your statements", `<span class="pos">${money(offStatements)}</span>`, "your balances rose by this much more than the statement lines explain"],
+        regular > 0 && ["Regular income", `<span class="pos">${money(regular)}</span>`, "salary, grants and anyone who pays you most months"],
+        onceOff > 0 && ["Once-off payments in", `<span class="pos">${money(onceOff)}</span>`, `vs ${money(b.categories["Sent to people"] || 0)} sent to people`],
+        (b.income_categories || {})["Unknown source"] > 0 && ["Unknown source", `<span class="pos">${money(b.income_categories["Unknown source"])}</span>`, "the bank doesn't say who sent it, or your balance rose with no statement line"],
         last12.length && ["Money out", `<span class="neg">${money(out)}</span>`, `about ${money(out / last12.length)} a month`],
         last12.length && ["Kept", signed(inn - out), inn ? `${pctOf(inn - out, inn)} of what came in` : ""],
         ["Bank fees", `<span class="neg">${money(b.fees_12m)}</span>`, "last 12 months"],
