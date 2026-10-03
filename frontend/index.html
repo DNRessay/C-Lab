@@ -55,6 +55,7 @@
         <tbody id="market-rows" class="wrap-first"></tbody>
       </table></div>
       <div id="sum-markets"></div>
+      <div id="deals-markets"></div>
       <div id="pulse-markets"></div>
       <div id="blog-wrap" hidden>
         <h2>Dividends from EasyEquities</h2>
@@ -787,6 +788,7 @@
         <td class="num"><small>${m.low_52w != null ? `${fmt(m, m.low_52w)} – ${fmt(m, m.high_52w)}` : ""}</small></td></tr>`).join("");
       summaryMarkets(markets);
       loadPulse("#pulse-markets", false).catch(() => {});
+      loadDeals().catch(() => {});
       api.blog().then(renderBlog).catch(() => {});
     }
 
@@ -1848,6 +1850,30 @@
       const b = e.target.closest(".ask-about");
       if (b) askAbout(b.dataset.topic, `Explain my ${TOPIC_NAME[b.dataset.topic].toLowerCase()} numbers and what I should do about them.`);
     });
+
+    // Company deals: buyouts, payouts, unbundlings, property mergers, each with "does buying now make money?"
+    const DEAL_TONE = { ok: ["can make money", "ok"], warn: ["loses money", "warn"], info: ["depends", ""] };
+    async function loadDeals(refresh = false) {
+      const box = $("#deals-markets");
+      let d;
+      try { d = await api.deals(refresh); } catch (e) { box.innerHTML = ""; return; }
+      const rows = d.deals.map(x => `<li class="deal">
+        <div class="row" style="justify-content:space-between;gap:0.5rem;flex-wrap:wrap">
+          <strong>${esc(x.company)}</strong>
+          <span>${badge(x.kind_label)}${x.property ? " " + badge("Property") : ""} ${badge(...DEAL_TONE[x.tone])}</span></div>
+        <small class="muted">${x.symbol ? esc(x.symbol) + " · " : ""}${x.price != null ? `trades at ${money(x.price)}` : "no price"}${x.amount ? ` · deal pays ${money(x.amount)} a share` : ""}${x.ldt ? ` · last day to trade ${day(x.ldt)}` : ""}</small>
+        <p style="margin:0.3rem 0">${esc(x.verdict)}</p>
+        <small><a href="${esc(x.link)}" target="_blank" rel="noopener">${esc(x.title)}</a> · ${esc(x.source)}${x.date ? ` · ${x.date}` : ""}</small></li>`).join("");
+      box.innerHTML = `<div class="card"><div class="ai-head"><h3>Company deals: worth buying for?</h3>
+        <button class="secondary small deals-refresh">Refresh</button></div>
+        <div class="callout info"><span class="cl-icon" aria-hidden="true">i</span><p><b class="cl-tag">Info</b> Buyouts, special payouts, unbundlings and property mergers from EasyEquities' blog and the news, checked against today's price after fees and 20% dividend tax. Deals can fail; this isn't advice.</p></div>
+        <ul class="plain">${rows || `<li class="muted">No company deals in the news right now.${d.sources.news ? "" : " Add SERPAPI_KEYS for news."}</li>`}</ul>
+        <small class="muted">Updated ${day(d.built_at)} ${d.built_at.slice(11, 16)} UTC</small></div>`;
+      $(".deals-refresh", box).addEventListener("click", async (e) => {
+        e.target.disabled = true; flash("Looking for company deals…", "warn");
+        await loadDeals(true); flash("Company deals updated.");
+      });
+    }
 
     // Market pulse: SA news + sentiment, calendar, outlook, technicals.
     const MOOD = { positive: ["positive", "ok"], negative: ["negative", "warn"], mixed: ["mixed", ""], neutral: ["neutral", "muted"] };

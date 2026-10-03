@@ -113,7 +113,8 @@ TOOLS = [
           "spending by category and upcoming dividends — the best starting point. Amounts in rand."),
     _tool("portfolio", "Portfolio", "Every holding with value, weight, gain, dividends; allocation; cash; "
           "and what the money would be worth in Satrix 40 / Satrix Property / US dollars instead."),
-    _tool("markets", "Markets board", "USD/ZAR, EUR/ZAR, GBP/ZAR, JSE Top 40, SA property, gold and S&P 500 with day, month and year moves."),
+    _tool("markets", "Markets board", "USD/ZAR, EUR/ZAR, GBP/ZAR, JSE Top 40, SA property, gold and S&P 500 with day, month and year moves, plus "
+          "company deals (buyouts, payouts, unbundlings) with whether buying now makes money."),
     _tool("quote", "Share quote", "Price, moves, dividend yield and 52-week range for one symbol (JSE shares end in .JO, e.g. GRT.JO).",
           {"symbol": _S}, ["symbol"]),
     _tool("watchlist", "Watchlist", "Watched shares with moves, yields and price alerts."),
@@ -149,7 +150,13 @@ def call_tool(name: str, args: dict, user: User, db: Session):
         keep = ("value", "invested", "gain", "return_pct", "cash", "allocation", "holdings", "benchmarks", "net_worth")
         return {k: s.get(k) for k in keep}
     if name == "markets":
-        return markets.board(user=user, db=db)
+        from .invest import deals
+
+        try:
+            company_deals = deals.get(db)["deals"]
+        except Exception:
+            company_deals = []
+        return {**markets.board(user=user, db=db), "company_deals": company_deals}
     if name == "quote":
         return invest.quote(str(args.get("symbol", "")).strip().upper(), user=user, db=db)
     if name == "watchlist":

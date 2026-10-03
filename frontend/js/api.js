@@ -95,6 +95,7 @@ export const api = {
   investSummary: () => get("/api/invest/summary"),
   investCharts: () => get("/api/invest/charts"),
   investMoney: () => get("/api/invest/money"),
+  deals: (refresh) => get(`/api/invest/deals${refresh ? "?refresh=true" : ""}`),
   pulse: (refresh) => get(`/api/invest/pulse${refresh ? "?refresh=true" : ""}`),
   technical: (symbol) => get(`/api/invest/technical/${encodeURIComponent(symbol)}`),
   investQuote: (symbol) => get(`/api/invest/quote/${encodeURIComponent(symbol)}`),

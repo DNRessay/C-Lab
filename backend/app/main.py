@@ -299,6 +299,13 @@ def handler(event, context):
                 logging.exception("Nightly blog read failed")
                 db.rollback()
             try:
+                from .invest import deals
+
+                deals.get(db, refresh=True)
+            except Exception:
+                logging.exception("Nightly company deals failed")
+                db.rollback()
+            try:
                 from .ai.router import warm_all
 
                 left = context.get_remaining_time_in_millis() / 1000 if context else 240

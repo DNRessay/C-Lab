@@ -17,7 +17,7 @@ from .prices import HEADERS, HTTP_KW, http
 log = logging.getLogger(__name__)
 
 BLOG = "https://blogs.easyequities.co.za"
-LISTINGS = [f"{BLOG}/topic/dividends-update", f"{BLOG}/topic/dividends-update/page/2", f"{BLOG}/"]
+LISTINGS = [f"{BLOG}/topic/dividends-update", f"{BLOG}/topic/dividends-update/page/2", f"{BLOG}/", f"{BLOG}/page/2"]
 SKIP_PATHS = ("/topic/", "/author/", "/page/", "/tag/", "/rss", "/all")
 
 MONTHS = {m: i for i, m in enumerate(["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], 1)}
