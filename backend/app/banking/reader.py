@@ -486,7 +486,9 @@ def income_category(t, regular=frozenset()) -> str:
         return f"{who} (regular)"
     if who:
         return "Once-off payments"
-    return "Unknown source"  # a PayShap or transfer that doesn't say who sent it
+    if PEOPLE_RE.search(d) or re.search(r"payshap", d, re.I):
+        return "From people (no name)"  # a PayShap or transfer that only carries the sender's reference
+    return "Unknown source"
 
 
 def regular_payers(txns, months=3):
