@@ -4,7 +4,8 @@ money. Nothing here can change data or move money.
 
 Access is by MCP key: made under Settings, shown once, stored hashed, and
 revocable one at a time. Connect with the API URL + "/mcp" and the key as a
-Bearer token."""
+Bearer token — or add the URL as a custom connector in Claude and sign in
+(mcp_connect.py), which makes the key for you."""
 import hashlib
 import json
 import secrets
@@ -44,12 +45,15 @@ def _hash(key: str) -> str:
 def key_user(request: Request, db: Session = Depends(get_db)) -> User:
     header = request.headers.get("authorization", "")
     key = header[7:].strip() if header.lower().startswith("bearer ") else ""
-    if not key.startswith(KEY_PREFIX):
-        raise HTTPException(401, "An MCP key is required (Settings → Connect apps).")
-    row = db.scalar(select(McpKey).where(McpKey.key_hash == _hash(key)))
+    row = db.scalar(select(McpKey).where(McpKey.key_hash == _hash(key))) if key.startswith(KEY_PREFIX) else None
     user = db.get(User, row.user_id) if row else None
     if not user or not user.is_active:
-        raise HTTPException(401, "This MCP key was revoked or doesn't exist.")
+        # The header points MCP clients (e.g. Claude's custom connectors) at the sign-in (mcp_connect.py).
+        from .mcp_connect import base_url
+        from .mcp_oauth import www_authenticate
+        raise HTTPException(401, "This MCP key was revoked or doesn't exist." if key else
+                            "Sign in, or use an MCP key from Settings → Connect apps.",
+                            headers={"WWW-Authenticate": www_authenticate(base_url(request))})
     row.last_used_at = utcnow()
     db.commit()
     return user
