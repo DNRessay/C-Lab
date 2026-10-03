@@ -20,7 +20,7 @@ def test_pocket_moves_are_internal_and_people_are_named():
     ]
     internal = reader.internal_pairs(txns)
     assert {1, 2, 3, 5, 6} <= internal and 4 not in internal
-    assert reader.income_category(txns[3]) == "Received from people"
+    assert reader.income_category(txns[3]) == "Once-off payments"
     assert reader.income_category(txn(7, date(2026, 5, 5), 9.0, "Interest_applied", category="Interest")) == "Interest"
 
 
@@ -179,3 +179,19 @@ def test_gotyme_read_from_text_is_queued_for_download_not_reparsed():
     assert (bad.status, good.status) == ("reread", "ok")
     assert db.query(BankTxn).filter(BankTxn.user_id == uid).count() == 2  # kept until the PDF is read again
     db.close()
+
+
+def test_money_in_is_grouped_by_where_it_came_from():
+    d = date(2026, 5, 5)
+    pays = [txn(10 + i, date(2026, m, 5), 3000.0, "PayShap - Pay by ShapID, M NYOBOL -", category="Payments")
+            for i, m in enumerate((3, 4, 5))]
+    regular = reader.regular_payers(pays)
+    assert regular == {"M Nyobol"}
+    assert reader.income_category(pays[0], regular) == "M Nyobol (regular)"
+    assert reader.income_category(txn(20, d, 500, "Payment Received: T Moshuwe", category="Income"), regular) == "Once-off payments"
+    assert reader.income_category(txn(21, d, 2000, "Payment Received: Tcps Gcra Learnership Octpayment 12345", category="Income")) == "Salary & stipends"
+    assert reader.income_category(txn(22, d, 370, "SASSA SRD grant", category="Income")) == "Grants"
+    assert reader.income_category(txn(23, d, 60, "Purchase at Checkers", category="Shopping")) == "Refunds & reversals"
+    assert reader.income_category(txn(24, d, 29, "Banking App Correction: Prepaid Purchase", category="Airtime & data")) == "Refunds & reversals"
+    assert reader.income_category(txn(25, d, 300, "PayShap Payment Received: Ohkay", category="Income")) == "Unknown source"
+    assert reader.payer("Payment Received: Paypal Xhvw9sj9 Transfer 1234567890") == "PayPal"
