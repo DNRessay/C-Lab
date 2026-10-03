@@ -212,3 +212,9 @@ def test_payshap_references_tell_your_own_transfers_from_people():
             txn(3, d, 500, "Banking App Transfer from Live Better Savings Account (1234567890)", category="Transfers")]
     assert reader.internal_pairs(txns, own=own) == {1, 3}
     assert reader.income_category(txn(4, d, 570, "Payment Received: Nrmlsassa Nw 1456961942 Pen", category="Income")) == "Grants"
+
+
+def test_crypto_payouts_are_named():
+    d = date(2026, 1, 6)
+    assert reader.income_category(txn(1, d, 2319.71, "Payment Received: E026ad01q0 Transfer 2908220041", category="Income")) == "Crypto sales"
+    assert reader.income_category(txn(2, d, 500, "Luno payout", category="Income")) == "Crypto sales"

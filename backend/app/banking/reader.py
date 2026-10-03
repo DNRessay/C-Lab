@@ -465,6 +465,9 @@ def internal_pairs(txns, days=3, own=None):
 
 
 SALARY_RE = re.compile(r"salary|salaries|wages?\b|payroll|learnership|stipend|internship", re.I)
+# Crypto platforms paying out. Paxful's payouts carry only a code like 'E025lr01n0' as the reference.
+CRYPTO_RE = re.compile(r"paxful|\bluno\b|\bvalr\b|binance|bybit|altcoin ?trader|\bovex\b|noones|"
+                       r"received:?\s*e0\d{2}[a-z0-9]{6}\b", re.I)
 GRANT_RE = re.compile(r"sassa|\bsrd\b|grant|nsfas|\buif\b", re.I)
 PAYER_RES = [re.compile(r"pay by (?:shapid|account),\s*([^-]+)", re.I),
              re.compile(r"(?:payment )?received(?: from)?:?\s*(.+)", re.I),
@@ -496,6 +499,8 @@ def income_category(t, regular=frozenset()) -> str:
         return "Salary & stipends"
     if GRANT_RE.search(d):
         return "Grants"
+    if CRYPTO_RE.search(d):
+        return "Crypto sales"
     if t.category == "Interest":
         return "Interest"
     if t.category not in NOT_MONEY_IN or re.search(r"refund|reversal|correction", d, re.I):
