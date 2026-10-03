@@ -63,7 +63,8 @@ class GoTymeParser:
                 amount, kind = r["debit"], "debit"
             else:
                 continue
-            out.append(make_txn(day, r["details"], amount, kind, "GOTYME", len(out), balance=r["balance"]))
+            out.append(make_txn(day, r["details"], amount, kind, "GOTYME", len(out), balance=r["balance"],
+                                account_number=r["account_number"]))
         log.info("GoTyme: %d transactions", len(out))
         return out
 
@@ -107,3 +108,39 @@ class GoTymeParser:
             if credit is None and debit is None and credit_s != "-" and debit_s != "-":
                 continue
             yield {"date": current_date, "details": detail, "credit": credit, "debit": debit, "balance": balance}
+
+
+TEXT_ROW = re.compile(r"^(\d{2} [A-Za-z]{3} \d{4})\s+(.+?)\s+(-|[\d,]+(?:\.\d+)?)\s+(-|[\d,]+(?:\.\d+)?)\s+(-?[\d,]+(?:\.\d+)?)\s*$")
+ACCOUNT_LINE = re.compile(r"Account Number:\s*(\d+)")
+
+
+class GoTymeTextParser:
+    """GoTyme from the statement's text (what C-Lab stores), so saved statements can be re-read without the PDF:
+    'DD Mon YYYY  Details  Credits(+)  Debits(-)  Running Balance', one account (or GoalSave pocket) per
+    'Account Number:' block. Summary lines ('Opening balance R0') don't have this shape and are never rows."""
+
+    def parse(self, text):
+        out, account = [], None
+        for raw in text.split("\n"):
+            line = raw.strip()
+            if (m := ACCOUNT_LINE.search(line)):
+                account = m.group(1)
+                continue
+            m = TEXT_ROW.match(line)
+            if not m:
+                continue
+            try:
+                day = datetime.strptime(m.group(1), "%d %b %Y").date()
+            except ValueError:
+                continue
+            credit, debit, balance = _num(m.group(3)), _num(m.group(4)), _num(m.group(5))
+            if credit:
+                amount, kind = credit, "credit"
+            elif debit:
+                amount, kind = debit, "debit"
+            else:
+                continue
+            out.append(make_txn(day, m.group(2), amount, kind, "GOTYME", len(out), balance=balance,
+                                account_number=account))
+        log.info("GoTyme (text): %d transactions", len(out))
+        return out

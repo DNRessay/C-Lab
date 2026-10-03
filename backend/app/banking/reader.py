@@ -113,7 +113,8 @@ SUMMARY_RE = re.compile(r"\b(opening|closing|brought forward|carried forward|b/f
 FEE_LINE_RE = re.compile(r"^\s*fee\s*:|\(fee\)\s*$", re.I)
 # Moves between pockets of the same account (GoalSave, "Transfer to Current account"): never income or spending.
 OWN_MOVE_RE = re.compile(r"goalsave|savings pocket|\btransfer (?:to|from) (?:current|savings) account\b|own account|"
-                         r"between (?:your |my )?accounts|round-?up", re.I)
+                         r"between (?:your |my )?accounts|round-?up|first savings|"
+                         r"banking app transfer (?:to|received from) [^:]+: transfer", re.I)  # Capitec's savings pockets
 # Money that came from (or went to) another person.
 PEOPLE_RE = re.compile(r"payshap|pay by shapid|pay by account|send ?money|cash ?send|\beft\b|received from|"
                        r"immediate payment|instant payment|pay beneficiary|payment from", re.I)
@@ -162,7 +163,8 @@ def rows_from(parsed, kind, rules=()):
         if not fee and "(fee)" in desc.lower():
             fee = abs(amount)
         out.append({"date": r["date"], "description": desc, "signed": amount, "fee": fee,
-                    "balance": r.get("balance"), "category": categorise(desc, r.get("category") or "", amount, rules)})
+                    "balance": r.get("balance"), "category": categorise(desc, r.get("category") or "", amount, rules),
+                    "account_number": r.get("account_number") or ""})
     return out
 
 
@@ -173,35 +175,46 @@ def save(db: Session, st: BankStatement, text: str, parsed):
     from .categorize import rules_for
 
     rows = rows_from(parsed, st.kind, rules_for(db, st.user_id))
+    # One PDF can hold several accounts (GoTyme's GoalSave pockets each have their own number and balance).
+    for r in rows:
+        digits = re.sub(r"\D", "", r["account_number"])
+        r["account"] = f"{NAMES.get(st.bank, st.bank.title())} ••{digits[-4:]}" if len(digits) >= 4 else st.account
     db.query(BankTxn).filter(BankTxn.statement_id == st.id).delete()
     have = set(db.scalars(select(BankTxn.key).where(BankTxn.user_id == st.user_id)))
     seen_here = defaultdict(int)
     for r in rows:
-        k = _key(st.user_id, st.account, r)
+        k = _key(st.user_id, r["account"], r)
         seen_here[k] += 1
         if seen_here[k] > 1:  # two identical lines on one statement (two R5 airtime buys) are both real
             k = k[:58] + f"-{seen_here[k]:05d}"
         if k in have:
             continue
         have.add(k)
-        db.add(BankTxn(user_id=st.user_id, statement_id=st.id, key=k, bank=st.bank, account=st.account, date=r["date"],
+        db.add(BankTxn(user_id=st.user_id, statement_id=st.id, key=k, bank=st.bank, account=r["account"], date=r["date"],
                        description=r["description"][:400], amount=round(r["signed"], 2), balance=r["balance"],
                        category=r["category"], fee=round(r["fee"], 2)))
     st.rows = len(rows)
     dated = [r for r in rows if r["balance"] is not None]
-    last = max(dated, key=lambda r: r["date"]) if dated else None
+    main = [r for r in dated if r["account"] == st.account] or dated
+    last = max(main, key=lambda r: r["date"]) if main else None
     st.closing_balance = last["balance"] if last else closing_balance(text)
     st.closing_date = last["date"] if last else (max(r["date"] for r in rows) if rows else
                                                  (st.received_at.date() if st.received_at else None))
-    if st.closing_balance is not None:
-        acc = db.scalar(select(BankAccount).where(BankAccount.user_id == st.user_id, BankAccount.account == st.account))
+    closing = {}
+    for r in sorted(dated, key=lambda r: r["date"]):
+        closing[r["account"]] = (r["balance"], r["date"])  # last line of each account on this statement
+    if not closing and st.closing_balance is not None:
+        closing[st.account] = (st.closing_balance, st.closing_date)
+    for account, (balance, when) in closing.items():
+        acc = db.scalar(select(BankAccount).where(BankAccount.user_id == st.user_id, BankAccount.account == account))
         if not acc:
-            acc = BankAccount(user_id=st.user_id, bank=st.bank, account=st.account, name=st.account, kind=st.kind)
+            acc = BankAccount(user_id=st.user_id, bank=st.bank, account=account, name=account, kind=st.kind)
             db.add(acc)
+            db.flush()
         if not acc.kind_set:
             acc.kind = st.kind
-        if acc.balance_date is None or (st.closing_date and st.closing_date >= acc.balance_date):
-            acc.balance, acc.balance_date = st.closing_balance, st.closing_date
+        if acc.balance_date is None or (when and when >= acc.balance_date):
+            acc.balance, acc.balance_date = balance, when
 
 
 def _walk(part):
@@ -300,12 +313,15 @@ def read_batch(db: Session, user_id: int, limit=15):
 
 
 def reparse(db: Session, user_id: int, only_empty=False):
-    """Re-run the text parsers over stored statements (GoTyme's positional rows are kept unless none were found)."""
+    """Re-run the text parsers over stored statements (GoTyme too: its text reader matches the PDF one)."""
     n = 0
     for st in db.scalars(select(BankStatement).where(BankStatement.user_id == user_id, BankStatement.status == "ok")):
-        if (only_empty and st.rows) or (st.bank == "gotyme" and st.rows):
+        if only_empty and st.rows:
             continue
-        save(db, st, st.body, parsers.parse_text(st.body, st.bank))
+        rows = parsers.parse_text(st.body, st.bank)
+        if st.bank == "gotyme" and len(rows) < st.rows:
+            continue  # the PDF reader found more on this one: keep its rows
+        save(db, st, st.body, rows)
         n += 1
     db.commit()
     return {"reparsed": n, **{k: v for k, v in status(db, user_id).items() if k != "last_read"}}
@@ -373,15 +389,39 @@ def status(db: Session, user_id: int):
                           None)}
 
 
-INVEST_RE = re.compile(r"easy\s?equities|first world trader|easyproperties|easy\s?properties|\bfwt\b|easycrypto|"
+INVEST_RE = re.compile(r"easy\s?equities|easygrp|ee_rfnd|first world trader|easyproperties|easy\s?properties|\bfwt\b|easycrypto|"
                        r"\bsatrix\b|etfsa|\b10x\b|sygnia|allan gray|coronation|tfsa", re.I)
 
 
-def internal_pairs(txns, days=3):
+HOLDER_RE = re.compile(r"\b(?:MR|MRS|MS|MISS|DR|PROF)\.?[ ]+([A-Z][A-Za-z'-]+(?:[ ]+[A-Z][A-Za-z'-]+){1,3})[ ]*$", re.M)
+
+
+def own_name_re(db: Session, user_id: int):
+    """Your name as banks print it on payments between your own accounts: 'Miguel Kudakashe N…' (first + middle)
+    or 'M Nyobol…' (initial + surname), read from the statements' address block. None if no name is found."""
+    return own_name_pattern(db.scalars(select(BankStatement.body).where(BankStatement.user_id == user_id).limit(40)))
+
+
+def own_name_pattern(bodies):
+    names = set()
+    for body in bodies:
+        if (m := HOLDER_RE.search(body or "")):
+            names.add(m.group(1).upper())
+    pats = []
+    for full in names:
+        parts = full.split()
+        first, surname = parts[0], parts[-1]
+        pats.append(rf"\b{re.escape(first)}\s+{re.escape(parts[1])}" if len(parts) > 2 else rf"\b{re.escape(full)}")
+        pats.append(rf"\b{re.escape(first[0])}\.?\s+{re.escape(surname[:5])}")
+    return re.compile("|".join(pats), re.I) if pats else None
+
+
+def internal_pairs(txns, days=3, own=None):
     """Ids of money moved between your own accounts: an amount leaving one account and the same amount arriving
     in another account within a few days, plus moves between pockets of one account (GoalSave and the like).
     Those aren't income or spending."""
-    used = {t.id for t in txns if OWN_MOVE_RE.search(getattr(t, "description", "") or "")}
+    used = {t.id for t in txns if OWN_MOVE_RE.search(getattr(t, "description", "") or "")
+            or (own is not None and own.search(getattr(t, "description", "") or ""))}
     ins = defaultdict(list)
     for t in txns:
         if t.amount > 0 and t.id not in used:
@@ -396,7 +436,7 @@ def internal_pairs(txns, days=3):
 
 def income_category(t) -> str:
     """What an incoming line is, for the money-in breakdown: people who paid you are named as such."""
-    if t.category in ("Transfers", "Other income", "Payments") and PEOPLE_RE.search(t.description or ""):
+    if t.category in ("Transfers", "Other income", "Payments", "Income") and PEOPLE_RE.search(t.description or ""):
         return "Received from people"
     if t.category in ("Transfers", "Other income"):
         return "Other money in"
@@ -411,7 +451,7 @@ def charts(db: Session, user_id: int, months=24):
     start = (date.today().replace(day=1) - timedelta(days=31 * (months - 1))).replace(day=1)
     txns = list(db.scalars(select(BankTxn).where(BankTxn.user_id == user_id, BankTxn.date >= start - timedelta(days=5))))
     txns = [t for t in txns if not SUMMARY_RE.search(t.description or "")]
-    internal = internal_pairs(txns)
+    internal = internal_pairs(txns, own=own_name_re(db, user_id))
     by_month = defaultdict(lambda: {"in": 0.0, "out": 0.0, "fees": 0.0, "invested": 0.0, "from_investments": 0.0,
                                     "internal": 0.0, "unrecorded_in": 0.0})
     cats, income_cats = defaultdict(float), defaultdict(float)

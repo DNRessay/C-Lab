@@ -68,3 +68,87 @@ def test_easyequities_cash_never_shows_a_wallet_hundreds_overdrawn():
         sync.rand_rate = original
     cash = {a["name"]: round(a["cash_zar"], 2) for a in view["accounts"]}
     assert cash == {"EasyEquities ZAR": 0.0, "TFSA": 0.14}
+
+
+CAPITEC = """Main Account Statement
+  MR THABO JAMES MOLOI
+Transaction History
+Date Description Category Money In Money Out Fee* Balance
+01/10/2024 Recurring Transfer Insufficient Funds of R1 000.00 (16916070)
+21/10/2024 Payment Received: 1070143456004 Vault M Other Income 58.00 73.54
+21/10/2024 Banking App External Payment: Tyme Savings -43.00 -2.00 28.54
+31/10/2024 Payment Received: Acme Learnership Octpayment
+2066267452
+Other Income 3 465.00 3 493.54
+31/10/2024 Banking App External PayShap Payment: Thabo James M
+(081 000 0000)
+Digital Payments -2 000.00 -6.00 1 487.54
+* Includes VAT at 15%
+*
+ 0860 10 20 43  ClientCare@capitecbank.co.za  capitecbank.co.za24hr Client Care Centre E W
+Date Description Category Money In Money Out Fee* Balance
+07/11/2025 Banking App Prepaid Purchase: Vodacom Cellphone -5.00 -0.50 1 482.04
+07/11/2025 Banking App Correction: Prepaid Purchase Cellphone 5.00 0.50 1 487.54
+30/11/2025 Monthly Account Admin Fee Fees -7.50 1 480.04
+* Includes VAT at 15%
+Pending Card Transactions
+*
+-R55.0026/09/2026 Tuck Shop Winterveld (Card 5997)
+"""
+
+
+def test_capitec_reads_every_row_and_follows_the_balance():
+    from app.banking.parsers.capitec import CapitecParser
+
+    rows = CapitecParser().parse(CAPITEC)
+    got = [(r["description"][:30], r["amount"], r["type"], r["fee"], r["balance"]) for r in rows]
+    assert got == [
+        ("Payment Received: 107014345600", 58.0, "credit", 0.0, 73.54),
+        ("Banking App External Payment: ", 43.0, "debit", 2.0, 28.54),
+        ("Payment Received: Acme Learner", 3465.0, "credit", 0.0, 3493.54),  # "3 465.00", wrapped over 3 lines
+        ("Banking App External PayShap P", 2000.0, "debit", 6.0, 1487.54),
+        ("Banking App Prepaid Purchase: ", 5.0, "debit", 0.5, 1482.04),
+        ("Banking App Correction: Prepai", 5.5, "credit", 0.0, 1487.54),  # the fee came back too
+        ("Monthly Account Admin Fee", 7.5, "debit", 0.0, 1480.04),        # last row before "Pending"
+    ]
+    assert rows[2]["category"] == "Income"
+
+
+def test_payments_between_your_own_accounts_by_name():
+    own = reader.own_name_pattern([CAPITEC])
+    assert own.search("Banking App External PayShap Payment: Thabo James M")
+    assert own.search("PayShap - Pay by ShapID, T MOLOI")
+    assert not own.search("PayShap - Pay by Account, C MOKOENA")
+    assert not own.search("PayShap - Pay by ShapID, S MOLOI")  # a relative, not you
+    txns = [txn(1, date(2026, 5, 1), -2000, "Banking App External PayShap Payment: Thabo James M"),
+            txn(2, date(2026, 5, 9), 500, "PayShap - Pay by ShapID, C MOKOENA", category="Transfers")]
+    assert reader.internal_pairs(txns, own=own) == {1}
+
+
+GOTYME = """GoalSave Account
+Account Number: 50348541894
+Summary
+Opening balance R0
+Total Credit R500.33
+Closing balance R0
+Date Details Credits (+) Debits (-) Running Balance
+06 Jul 2026 Transfer from Current account 500 - 500
+10 Jul 2026 Earned interest 0.33 - 500.33
+10 Jul 2026 Transfer to Current account - 500.33 0
+GoalSave Account
+Account Number: 50268212678
+Date Details Credits (+) Debits (-) Running Balance
+06 Sep 2026 Transfer from Current account 1,200 - 1,200
+"""
+
+
+def test_gotyme_text_reader_keeps_each_pocket_apart():
+    from app.banking.parsers.gotyme import GoTymeTextParser
+
+    rows = GoTymeTextParser().parse(GOTYME)
+    assert [(r["description"], r["amount"], r["type"], r["balance"], r["account_number"][-4:]) for r in rows] == [
+        ("Transfer from Current account", 500.0, "credit", 500.0, "1894"),
+        ("Earned interest", 0.33, "credit", 500.33, "1894"),
+        ("Transfer to Current account", 500.33, "debit", 0.0, "1894"),
+        ("Transfer from Current account", 1200.0, "credit", 1200.0, "2678"),
+    ]
