@@ -7,6 +7,7 @@ import re
 from collections import defaultdict
 from datetime import date, timedelta
 from email.utils import parsedate_to_datetime
+from pathlib import Path
 
 import requests
 from sqlalchemy import func, select
@@ -112,7 +113,7 @@ def redetect_kinds(db: Session, user_id: int):
 SUMMARY_RE = re.compile(r"\b(opening|closing|brought forward|carried forward|b/f|c/f)\s*balance\b|^\s*summary\b", re.I)
 FEE_LINE_RE = re.compile(r"^\s*fee\s*:|\(fee\)\s*$", re.I)
 # Moves between pockets of the same account (GoalSave, "Transfer to Current account"): never income or spending.
-OWN_MOVE_RE = re.compile(r"goalsave|savings pocket|\btransfer (?:to|from) (?:current|savings) account\b|own account|"
+OWN_MOVE_RE = re.compile(r"goalsave|savings pocket|\btransfer (?:to|from) (?:current|[\w ]*savings) account\b|own account|"
                          r"between (?:your |my )?accounts|round-?up|first savings|"
                          r"banking app transfer (?:to|received from) [^:]+: transfer", re.I)  # Capitec's savings pockets
 # Money that came from (or went to) another person.
@@ -401,7 +402,7 @@ def status(db: Session, user_id: int):
 
 
 INVEST_RE = re.compile(r"easy\s?equities|easygrp|ee_rfnd|first world trader|easyproperties|easy\s?properties|\bfwt\b|easycrypto|"
-                       r"\bsatrix\b|etfsa|\b10x\b|sygnia|allan gray|coronation|tfsa", re.I)
+                       r"\bee withdrawal\b|\bsatrix\b|etfsa|\b10x\b|sygnia|allan gray|coronation|tfsa", re.I)
 
 
 HOLDER_RE = re.compile(r"\b(?:MR|MRS|MS|MISS|DR|PROF)\.?[ ]+([A-Z][A-Za-z'-]+(?:[ ]+[A-Z][A-Za-z'-]+){1,3})[ ]*$", re.M)
@@ -424,7 +425,24 @@ def own_name_pattern(bodies):
         first, surname = parts[0], parts[-1]
         pats.append(rf"\b{re.escape(first)}\s+{re.escape(parts[1])}" if len(parts) > 2 else rf"\b{re.escape(full)}")
         pats.append(rf"\b{re.escape(first[0])}\.?\s+{re.escape(surname[:5])}")
+        pats.append(rf"payshap payment received:?\s*{re.escape(first)}\s*$")  # your first name as the reference
     return re.compile("|".join(pats), re.I) if pats else None
+
+
+WORDS = frozenset((Path(__file__).with_name("words.txt")).read_text().split())
+PAYSHAP_REF_RE = re.compile(r"payshap payment received:?\s*(.*)", re.I)
+
+
+def own_reference(description: str, own=None) -> bool:
+    """A PayShap you sent yourself from another bank: the reference is an ordinary word ('Main', 'Update',
+    'Ohkay') or your own name. People paying you leave their name, the default reference on most banks."""
+    m = PAYSHAP_REF_RE.search(description or "")
+    if not m:
+        return False
+    if own is not None and (own.search(m.group(1)) or own.search(description)):
+        return True
+    words = [w.lower() for w in re.findall(r"[A-Za-z]+", m.group(1))]
+    return all(len(w) < 2 or w in WORDS for w in words)
 
 
 def internal_pairs(txns, days=3, own=None):
@@ -432,7 +450,8 @@ def internal_pairs(txns, days=3, own=None):
     in another account within a few days, plus moves between pockets of one account (GoalSave and the like).
     Those aren't income or spending."""
     used = {t.id for t in txns if OWN_MOVE_RE.search(getattr(t, "description", "") or "")
-            or (own is not None and own.search(getattr(t, "description", "") or ""))}
+            or (own is not None and own.search(getattr(t, "description", "") or ""))
+            or (t.amount > 0 and own_reference(getattr(t, "description", ""), own))}
     ins = defaultdict(list)
     for t in txns:
         if t.amount > 0 and t.id not in used:
@@ -446,7 +465,7 @@ def internal_pairs(txns, days=3, own=None):
 
 
 SALARY_RE = re.compile(r"salary|salaries|wages?\b|payroll|learnership|stipend|internship", re.I)
-GRANT_RE = re.compile(r"\bsassa\b|\bsrd\b|grant|nsfas|\buif\b", re.I)
+GRANT_RE = re.compile(r"sassa|\bsrd\b|grant|nsfas|\buif\b", re.I)
 PAYER_RES = [re.compile(r"pay by (?:shapid|account),\s*([^-]+)", re.I),
              re.compile(r"(?:payment )?received(?: from)?:?\s*(.+)", re.I),
              re.compile(r"payment from\s*(.+)", re.I)]
@@ -458,8 +477,8 @@ def payer(description: str) -> str:
     d = description or ""
     if re.search(r"paypal", d, re.I):
         return "PayPal"
-    if re.search(r"payshap payment received", d, re.I):
-        return ""  # Capitec shows the sender's reference here ("Ohkay"), not who sent it
+    if (m := PAYSHAP_REF_RE.search(d)):
+        return " ".join(re.findall(r"[A-Za-z]{2,}", m.group(1))[:3]).title()  # the sender's name, their bank's default reference
     for rx in PAYER_RES:
         if (m := rx.search(d)):
             words = [w for w in re.split(r"[\s:,]+", m.group(1)) if w and not re.search(r"\d", w)

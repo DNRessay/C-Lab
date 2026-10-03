@@ -193,5 +193,22 @@ def test_money_in_is_grouped_by_where_it_came_from():
     assert reader.income_category(txn(22, d, 370, "SASSA SRD grant", category="Income")) == "Grants"
     assert reader.income_category(txn(23, d, 60, "Purchase at Checkers", category="Shopping")) == "Refunds & reversals"
     assert reader.income_category(txn(24, d, 29, "Banking App Correction: Prepaid Purchase", category="Airtime & data")) == "Refunds & reversals"
-    assert reader.income_category(txn(25, d, 300, "PayShap Payment Received: Ohkay", category="Income")) == "From people (no name)"
+    assert reader.income_category(txn(25, d, 300, "PayShap Payment Received: 45", category="Income")) == "From people (no name)"
     assert reader.payer("Payment Received: Paypal Xhvw9sj9 Transfer 1234567890") == "PayPal"
+
+
+def test_payshap_references_tell_your_own_transfers_from_people():
+    import re
+
+    own = re.compile(r"\bMIGUEL\s+KUDAKASHE|\bM\.?\s+NYOBO|payshap payment received:?\s*MIGUEL\s*$", re.I)
+    for ref in ("Ohkay", "Main", "Update", "Create", "1", "Miguel"):
+        assert reader.own_reference(f"PayShap Payment Received: {ref}", own), ref
+    for ref in ("Tumelo", "Mokone", "T Moshuwe", "Sthe"):
+        assert not reader.own_reference(f"PayShap Payment Received: {ref}", own), ref
+    assert reader.payer("PayShap Payment Received: Tumelo") == "Tumelo"
+    d = date(2026, 5, 5)
+    txns = [txn(1, d, 300, "PayShap Payment Received: Ohkay", category="Income"),
+            txn(2, d, 300, "PayShap Payment Received: Tumelo", category="Income"),
+            txn(3, d, 500, "Banking App Transfer from Live Better Savings Account (1234567890)", category="Transfers")]
+    assert reader.internal_pairs(txns, own=own) == {1, 3}
+    assert reader.income_category(txn(4, d, 570, "Payment Received: Nrmlsassa Nw 1456961942 Pen", category="Income")) == "Grants"
