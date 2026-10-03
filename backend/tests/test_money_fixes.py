@@ -193,5 +193,5 @@ def test_money_in_is_grouped_by_where_it_came_from():
     assert reader.income_category(txn(22, d, 370, "SASSA SRD grant", category="Income")) == "Grants"
     assert reader.income_category(txn(23, d, 60, "Purchase at Checkers", category="Shopping")) == "Refunds & reversals"
     assert reader.income_category(txn(24, d, 29, "Banking App Correction: Prepaid Purchase", category="Airtime & data")) == "Refunds & reversals"
-    assert reader.income_category(txn(25, d, 300, "PayShap Payment Received: Ohkay", category="Income")) == "Unknown source"
+    assert reader.income_category(txn(25, d, 300, "PayShap Payment Received: Ohkay", category="Income")) == "From people (no name)"
     assert reader.payer("Payment Received: Paypal Xhvw9sj9 Transfer 1234567890") == "PayPal"
