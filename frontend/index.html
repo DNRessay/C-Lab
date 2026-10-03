@@ -1406,7 +1406,7 @@
     $("#bank-rows").addEventListener("click", (e) => { const b = e.target.closest(".cat-edit"); if (b) chooseCategory(b.dataset.id).catch(err => flash(err.message, "err")); });
     action($("#bank-tidy"), async () => {
       const r = await api.bankCategorise();
-      flash(`Categories tidied: ${r.rules_and_keywords} changed by rules${r.left != null ? `, ${r.ai} named by AI, ${r.left} still Other` : " (AI not set up)"}.`);
+      flash(`Categories tidied: ${r.rules_and_keywords} changed by rules${r.left != null ? `, ${r.ai} named by AI, ${r.left} still Other` : " (AI not set up)"}.${r.to_download ? ` ${r.to_download} GoTyme statement(s) need reading again: press Read bank statements.` : ""}`);
       loadBank();
     });
     let bankTimer;
