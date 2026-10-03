@@ -5,7 +5,7 @@ import logging
 
 from .capitec import CapitecParser
 from .generic import GenericParser
-from .gotyme import GoTymeParser, is_gotyme
+from .gotyme import GoTymeParser, GoTymeTextParser, is_gotyme
 from .tymebank import TymeBankLegacyParser
 
 log = logging.getLogger(__name__)
@@ -34,7 +34,8 @@ def extract_text(pdf_bytes, passwords=()):
     return "\n".join(page.extract_text() or "" for page in reader.pages), pw
 
 
-TEXT_PARSERS = {"tymebank": TymeBankLegacyParser, "capitec": CapitecParser, "generic": GenericParser}
+TEXT_PARSERS = {"tymebank": TymeBankLegacyParser, "capitec": CapitecParser, "gotyme": GoTymeTextParser,
+                "generic": GenericParser}
 
 
 def parse_text(text, bank_name):

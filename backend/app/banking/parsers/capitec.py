@@ -2,80 +2,94 @@ import logging
 import re
 from datetime import datetime
 
-from .common import AMOUNT, make_txn, to_float
+from .common import make_txn
 
 log = logging.getLogger(__name__)
 
-CATEGORY_WORDS = {
-    "Income", "Savings", "Withdrawal", "Transfer", "Payments", "Cellphone",
-    "Uncategorised", "Investments", "Fees", "Interest",
-}
-CREDIT_HINTS = ("payment received", "received", "deposit", "interest received", "transfer received", "refund")
-DEBIT_HINTS = ("payment:", "sent", "cash sent", "withdrawal", "purchase", "transfer to", "prepaid", "voucher", "debicheck")
+# Capitec's Transaction History: Date | Description | Category | Money In | Money Out | Fee* | Balance.
+# Money out and fees are printed negative, thousands are separated by spaces ("3 465.00", "-36 800.16"),
+# and a description can wrap over several lines with the amounts on the last one.
+MONEY = r"-?\d{1,3}(?: \d{3})*\.\d{2}"
+TAIL = re.compile(rf"((?:\s+{MONEY})+)\s*$")
+NUMBER = re.compile(MONEY)
+ROW = re.compile(r"^(\d{2}/\d{2}/\d{4})\s+(.*)$")
+NOISE = ("Includes VAT", "Client Care Centre", "Capitec Bank is an authorised", "Unique Document No",
+         "Date Description Category", "Transaction History", "Page ")
+# Capitec's own categories, longest first so "Other Income" wins over "Income".
+CATEGORIES = sorted([
+    "Other Income", "Investment Income", "Digital Payments", "Card Payments", "Cash Withdrawal", "Debit Orders",
+    "Card Subscriptions", "Digital Subscriptions", "Online Store", "Clothing & Shoes", "Personal Care",
+    "Home Improvements", "Takeaways", "Restaurants", "Groceries", "Fuel", "Transport", "Cellphone", "Prepaid",
+    "Vouchers", "Transfer", "Fees", "Interest", "Pension", "Refund", "Savings", "Insurance", "Loans", "Medical",
+    "Entertainment", "Education", "Holiday", "Gifts", "Alcohol", "Furniture", "Electronics", "Uncategorised",
+    "Send Cash", "Salary", "Income", "Payments", "Withdrawal", "Investments",
+], key=len, reverse=True)
+# A few of Capitec's names, mapped to what the rest of C-Lab calls them.
+CATEGORY_MAP = {"Transfer": "Transfer", "Cash Withdrawal": "Withdrawal", "Prepaid": "Cellphone", "Fees": "Fees",
+                "Interest": "Interest", "Investment Income": "Income", "Other Income": "Income", "Salary": "Income",
+                "Pension": "Income", "Refund": "Income"}
 
-ROW = re.compile(r"^(\d{2}/\d{2}/\d{4})\s+(.+)$")
-THREE = re.compile(rf"^(.+?)\s+({AMOUNT})\s+({AMOUNT})\s+({AMOUNT})\s*$")
-TWO = re.compile(rf"^(.+?)\s+({AMOUNT})\s+({AMOUNT})\s*$")
-AMOUNTS_ONLY = re.compile(rf"^({AMOUNT})\s+({AMOUNT})\s*$")
-SKIP = ("Transaction History", "Money In", "Money Out")
+
+def _money(s):
+    return float(s.replace(" ", ""))
 
 
 def split_category(text):
-    """Capitec prints the category after the description, e.g. 'Checkers Sandton Groceries'."""
-    words = text.split()
-    for i in range(len(words) - 1, -1, -1):
-        if words[i] in CATEGORY_WORDS:
-            two_word = i > 0 and words[i - 1] not in CATEGORY_WORDS
-            category = f"{words[i - 1]} {words[i]}" if two_word else words[i]
-            return " ".join(words[: i - 1] if two_word else words[:i]), category
+    """'Payment Received: ... Other Income' -> ('Payment Received: ...', 'Other Income')."""
+    for cat in CATEGORIES:
+        if text.endswith(" " + cat) or text == cat:
+            return text[: -len(cat)].strip(), cat
     return text, None
 
 
 class CapitecParser:
     def parse(self, text):
-        out = []
-        lines = text.split("\n")
-        i = 0
-        while i < len(lines):
-            line = lines[i].strip()
-            m = ROW.match(line) if line and not any(s in line for s in SKIP) else None
-            if not m:
-                i += 1
+        entries, current = [], None
+        for raw in text.split("\n"):
+            line = raw.strip()
+            if line.startswith("Pending Card Transactions"):
+                current = None  # not on the account yet; they appear as real rows on the next statement
                 continue
+            if not re.search(r"[A-Za-z0-9]", line) or any(n in line for n in NOISE):
+                continue  # page furniture, and the lone "*" of the VAT footnote under a page's last row
+            m = ROW.match(line)
+            if m:
+                current = [m.group(1), m.group(2)]
+                entries.append(current)
+            elif current is not None:
+                current[1] += " " + line
+
+        out, previous = [], None
+        for day_s, body in entries:
             try:
-                day = datetime.strptime(m.group(1), "%d/%m/%Y").date()
-                rest = m.group(2).strip()
-                fee = 0.0
-                if (m3 := THREE.match(rest)):
-                    body, amount, fee, balance = m3.group(1), to_float(m3.group(2)), to_float(m3.group(3)), to_float(m3.group(4))
-                elif (m2 := TWO.match(rest)):
-                    body, amount, balance = m2.group(1), to_float(m2.group(2)), to_float(m2.group(3))
-                elif i + 1 < len(lines) and (mn := AMOUNTS_ONLY.match(lines[i + 1].strip())):
-                    body, amount, balance = rest, to_float(mn.group(1)), to_float(mn.group(2))
-                    i += 1
-                else:
-                    i += 1
-                    continue
-
-                description, category = split_category(body.strip())
-                low = description.lower()
-                if any(k in low for k in CREDIT_HINTS):
-                    is_credit = True
-                elif any(k in low for k in DEBIT_HINTS):
-                    is_credit = False
-                elif amount < 0:
-                    is_credit = False
-                else:
-                    cat = (category or "").lower()
-                    is_credit = "income" in cat or "received" in cat
-
-                if abs(amount) > 0 and len(description) >= 3:
-                    out.append(make_txn(
-                        day, description, amount, "credit" if is_credit else "debit", "CAP", len(out),
-                        category=category, fee=abs(fee), balance=balance,
-                    ))
-            except (ValueError, IndexError) as e:
-                log.warning("Capitec row skipped: %s", e)
-            i += 1
+                day = datetime.strptime(day_s, "%d/%m/%Y").date()
+            except ValueError:
+                continue
+            body = " ".join(body.split())
+            tail = TAIL.search(body)
+            if not tail:
+                continue  # "Insufficient Funds" notices carry no money
+            numbers = [_money(n) for n in NUMBER.findall(tail.group(1))]
+            if len(numbers) < 2:
+                continue
+            balance, values = numbers[-1], numbers[:-1][-2:]
+            amount, fee = values[0], 0.0
+            if len(values) == 2:
+                amount, fee = values
+                if previous is not None and abs(previous + values[1] - balance) < 0.005 and \
+                        abs(previous + sum(values) - balance) >= 0.005:
+                    amount, fee = values[1], 0.0  # the first number was part of the description
+            if fee > 0:
+                amount, fee = amount + fee, 0.0  # a fee refunded (Capitec "Correction" lines print it positive)
+            description, category = split_category(body[: tail.start()].strip())
+            if previous is not None and abs(previous + amount + fee - balance) >= 0.005:
+                log.info("Capitec row doesn't follow the running balance: %s %s", day_s, description[:60])
+            previous = balance
+            if abs(amount) < 0.005 and abs(fee) >= 0.005:
+                amount, fee, description = fee, 0.0, description + " (Fee)"
+            if abs(amount) < 0.005 or len(description) < 3:
+                continue
+            out.append(make_txn(day, description, amount, "credit" if amount > 0 else "debit", "CAP", len(out),
+                                category=CATEGORY_MAP.get(category, category), fee=abs(fee), balance=balance))
         log.info("Capitec: %d transactions", len(out))
         return out
