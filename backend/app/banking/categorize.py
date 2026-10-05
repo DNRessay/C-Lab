@@ -25,6 +25,8 @@ DEFAULTS = [
     ("Interest", "in", "earned interest,interest earned,interest credited,interest paid,savings interest,interest"),
     ("Income", "in", "salary,payroll,wages,commission,bonus,dividend,refund,payshap payment received,payment received,"
                      "received from,deposit"),
+    # Before the shop and fuel lists: "ATM Withdrawal at ENGEN WINTERVD" is cash from an ATM at a garage, not fuel.
+    ("Cash", "out", "atm withdrawal,atm cash,cash withdrawal,cash sent,atm"),
     ("Groceries", "out", "supermarket,checkers,woolworths,pick n pay,pnp,spar,shoprite,food lover,usave,makro,boxer,"
                          "spaza,tuck shop,liquor,tops"),
     ("Transport", "out", "caltex,shell,sasol,engen,totalenergies,bp,astron,fuel,petrol,uber,bolt,taxi,gautrain,"
@@ -42,7 +44,6 @@ DEFAULTS = [
     ("Debt", "out", "loan,credit card,repayment,instalment,finance,rcs,edgars account,truworths account,mr price money"),
     ("Shopping", "out", "takealot,amazon,mr price,ackermans,pep,jet,h&m,zara,edgars,truworths,foschini,sportsmans,"
                         "builders,leroy merlin,game,incredible,temu,shein"),
-    ("Cash", "out", "atm,cash withdrawal,cash sent"),
     ("Payments", "out", "immediate payment,capitec pay,snapscan,zapper,payfast,ewallet,send money,payshap"),
 ]
 NAMES = [n for n, _, _ in DEFAULTS] + ["Other", "Other income"]
