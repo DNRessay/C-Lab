@@ -520,3 +520,10 @@ body.locked #nav, body.locked main > section { display: none !important; }
 }
 .ob-form[hidden] { display: none !important; }
 .onboard[hidden] { display: none !important; }
+/* Dividend calendar: 12-month strip */
+.cal-strip { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 4px; margin: 0.4rem 0 0.8rem; }
+.cal-cell { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 2px; height: 84px;
+            padding: 4px 0; border-radius: 8px; background: var(--panel); color: var(--text); text-decoration: none; font-size: 0.72rem; }
+.cal-cell i { order: -1; width: 60%; min-height: 2px; border-radius: 3px; background: var(--series-1); }
+.cal-cell.none { opacity: 0.5; }
+.cal-cell small { color: var(--muted); min-height: 1em; }

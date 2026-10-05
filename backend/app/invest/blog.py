@@ -420,6 +420,19 @@ def matcher(names_and_symbols):
     return match
 
 
+def fx_rates(db: Session, currencies) -> dict:
+    """Rand per unit of each currency (from the cached Yahoo FX quotes)."""
+    fx = {"ZAR": 1.0}
+    for cur in {(c or "").upper() for c in currencies} - {"ZAR", ""}:
+        try:
+            q = prices.quote(db, f"{cur}ZAR=X" if cur != "USD" else "ZAR=X")
+            if q and q.price:
+                fx[cur] = float(q.price)
+        except Exception:
+            pass
+    return fx
+
+
 def view(db: Session, holdings, watch, days_back=45):
     """Latest posts, and the dividends declared in them (still to come, or from the last few weeks), each marked if
     you hold or watch it; for holdings, roughly what you'll get (units x amount)."""
@@ -440,14 +453,7 @@ def view(db: Session, holdings, watch, days_back=45):
     for account, instrument, paid in db.execute(select(BlogDividend.account, BlogDividend.instrument, BlogDividend.pay_date)):
         if paid:
             pay_months[symbol_key(account, instrument)].add(paid.month)
-    fx = {"ZAR": 1.0}
-    for cur in {(d.currency or "").upper() for d, _ in rows} - {"ZAR", ""}:
-        try:
-            q = prices.quote(db, f"{cur}ZAR=X" if cur != "USD" else "ZAR=X")
-            if q and q.price:
-                fx[cur] = float(q.price)
-        except Exception:
-            pass
+    fx = fx_rates(db, {d.currency for d, _ in rows})
     seen, out = set(), []
     for d, p in rows:
         key = (d.account, norm(d.instrument), d.ldt)

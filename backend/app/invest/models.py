@@ -99,6 +99,15 @@ class PriceCache(Base):
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
 
 
+class DividendHistory(Base):
+    """Past dividends per symbol from Yahoo (~5 years of ex-dates), for the dividend calendar."""
+
+    __tablename__ = "invest_dividend_history"
+    symbol: Mapped[str] = mapped_column(String(30), primary_key=True)
+    events: Mapped[list] = mapped_column(JSON, default=list, nullable=False)  # [[ex_date_iso, amount], ...]
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
+
+
 class PortfolioSnapshot(Base):
     """One row per user per day: what the portfolio was worth, for the 'worth over time' chart."""
 

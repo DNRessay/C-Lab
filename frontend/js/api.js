@@ -129,6 +129,7 @@ export const api = {
   aiDeleteChat: (id) => del(`/api/ai/chats/${id}`),
   aiConverse: (b) => post("/api/ai/converse", b),
   blog: () => get("/api/invest/blog"),
+  dividendCalendar: () => get("/api/invest/calendar"),
   blogRefresh: () => post("/api/invest/blog/refresh"),
   blogWatch: (b) => post("/api/invest/blog/watch", b),
   bank: () => get("/api/bank"),

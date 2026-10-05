@@ -322,6 +322,14 @@ def blog_view(user: User = Depends(current_user), db: Session = Depends(get_db))
     return blog.view(db, s["holdings"], list(db.scalars(select(WatchItem).where(WatchItem.user_id == user.id))))
 
 
+@router.get("/calendar")
+def dividend_calendar(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from . import div_calendar
+
+    s = portfolio.summary(db, user.id)
+    return div_calendar.view(db, s["holdings"], list(db.scalars(select(WatchItem).where(WatchItem.user_id == user.id))))
+
+
 @router.post("/blog/refresh")
 def blog_refresh(user: User = Depends(current_user), db: Session = Depends(get_db)):
     from . import blog
