@@ -1428,7 +1428,7 @@
 
     // EasyEquities blog: dividends coming up (overview) and picks to watch (watchlist)
     const MINE = { hold: ["you hold this", "ok"], watch: ["on your watchlist", ""] };
-    const divAmt = (d) => d.amount == null ? "" : `${d.currency === "ZAR" ? "R" : d.currency === "USD" ? "$" : d.currency + " "}${amount(d.amount)}`;
+    const divAmt = (d) => d.amount == null ? "" : `${d.currency === "ZAR" ? "R" : d.currency === "USD" ? "$" : d.currency + " "}${amount(d.amount)}${d.amount_zar != null ? ` <small class="muted">[R${amount(d.amount_zar)}]</small>` : ""}`;
     const dayOr = (d) => d ? day(d) : "—";
     const STATE = { open: ["still open", "ok"], paying: ["being paid", ""], paid: ["paid", "muted"] };
     const SEASON_ORDER = ["Summer", "Autumn", "Winter", "Spring"];
@@ -1439,7 +1439,7 @@
         date: (a, b) => (a.ldt || "").localeCompare(b.ldt || ""),
         yield: (a, b) => (b.this_pct ?? -1) - (a.this_pct ?? -1),
         yield12: (a, b) => (b.yield_12m ?? -1) - (a.yield_12m ?? -1),
-        amount: (a, b) => (b.amount ?? 0) - (a.amount ?? 0),
+        amount: (a, b) => (b.amount_zar ?? b.amount ?? 0) - (a.amount_zar ?? a.amount ?? 0),
         season: (a, b) => SEASON_ORDER.indexOf(a.season) - SEASON_ORDER.indexOf(b.season) || (a.pay_date || "").localeCompare(b.pay_date || ""),
       }[how] || (() => 0);
       return [...rows].sort(by);
