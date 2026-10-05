@@ -12,6 +12,7 @@ from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from ..db import Base
 from ..models import BigId, created, pk, text, utcnow
+from . import prices
 from .prices import HEADERS, HTTP_KW, http
 
 log = logging.getLogger(__name__)
@@ -439,6 +440,14 @@ def view(db: Session, holdings, watch, days_back=45):
     for account, instrument, paid in db.execute(select(BlogDividend.account, BlogDividend.instrument, BlogDividend.pay_date)):
         if paid:
             pay_months[symbol_key(account, instrument)].add(paid.month)
+    fx = {"ZAR": 1.0}
+    for cur in {(d.currency or "").upper() for d, _ in rows} - {"ZAR", ""}:
+        try:
+            q = prices.quote(db, f"{cur}ZAR=X" if cur != "USD" else "ZAR=X")
+            if q and q.price:
+                fx[cur] = float(q.price)
+        except Exception:
+            pass
     seen, out = set(), []
     for d, p in rows:
         key = (d.account, norm(d.instrument), d.ldt)
@@ -453,13 +462,20 @@ def view(db: Session, holdings, watch, days_back=45):
         pc = cache.get(sym)
         price = float(pc.price) if pc and pc.price is not None else None
         same = pc is not None and (pc.currency or "").upper() == (d.currency or "").upper()
+        rate = fx.get((d.currency or "").upper())
+        in_zar = round(d.amount * rate, 4) if rate and d.amount is not None else None
+        if not same and pc is not None and (pc.currency or "").upper() == "ZAR" and in_zar is not None:
+            same, amt = True, in_zar
+        else:
+            amt = d.amount
         paid_month = (d.pay_date or d.ldt).month if (d.pay_date or d.ldt) else None
         out.append({"price": price, "price_currency": pc.currency if pc else "", "ticker": sym,
-                    "this_pct": round(d.amount / price, 5) if price and d.amount is not None and same else None,
+                    "this_pct": round(amt / price, 5) if price and amt is not None and same else None,
                     "yield_12m": round(float(pc.dividends_12m) / price, 5) if price and pc.dividends_12m else None,
                     "season": SEASONS.get(paid_month, ""),
                     "pays_in": [MONTH_NAMES[i - 1] for i in sorted(pay_months.get(key_s, ()))],
                     "instrument": d.instrument, "account": d.account, "amount": d.amount, "currency": d.currency,
+                    "amount_zar": in_zar if (d.currency or "").upper() != "ZAR" else None,
                     "ldt": d.ldt.isoformat() if d.ldt else None, "pay_date": d.pay_date.isoformat() if d.pay_date else None,
                     "mine": m[0] if m else "", "symbol": m[1] if m else "", "post": p.url, "state": state,
                     "can_buy": state == "open", "units": qty,
