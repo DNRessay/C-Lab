@@ -23,6 +23,8 @@ DEFAULTS = [
                          "savings pocket,live better,round-up,round up,savings round,easyequities,first world trader,"
                          "investment,tfsa"),
     ("Interest", "in", "earned interest,interest earned,interest credited,interest paid,savings interest,interest"),
+    # Cash put in at an ATM or branch is usually your own money going back in, not new income.
+    ("Cash deposit", "in", "atm deposit,cash deposit,deposit at atm,atm cash deposit,notes deposit,cash dep"),
     ("Income", "in", "salary,payroll,wages,commission,bonus,dividend,refund,payshap payment received,payment received,"
                      "received from,deposit"),
     # Before the shop and fuel lists: "ATM Withdrawal at ENGEN WINTERVD" is cash from an ATM at a garage, not fuel.

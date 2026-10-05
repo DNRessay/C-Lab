@@ -201,3 +201,17 @@ def test_atm_withdrawals_at_garages_and_shops_are_cash():
     assert categorise("ATM Withdrawal at 21 Molete Makinta Road Mabopane", -400) == "Cash"
     assert categorise("ATM Withdrawal Fee", -10) == "Bank fees"
     assert categorise("Purchase at ENGEN WINTERVELD", -500) == "Transport"  # fuel is still transport
+
+
+def test_atm_deposits_are_cash_deposits_not_income():
+    from types import SimpleNamespace
+
+    from app.banking.categorize import NAMES, categorise
+    from app.banking.reader import income_category
+
+    assert "Cash deposit" in NAMES
+    for line in ("ATM Deposit at ENGEN WINTERVD DDU MABOPANE", "Cash Deposit at Boxer Mabopane", "ATM Cash Deposit 21 Molete Rd"):
+        assert categorise(line, 500) == "Cash deposit"
+        assert income_category(SimpleNamespace(description=line, category="Cash deposit")) == "Cash deposits"
+    assert categorise("Salary deposit ACME", 9000) == "Income"
+    assert categorise("ATM Withdrawal at ENGEN WINTERVD", -600) == "Cash"
