@@ -30,7 +30,11 @@ KIND_RE = [("special_distribution", r"special (?:dividend|distribution)|capital 
            ("delisting", r"delist"), ("rights_offer", r"rights offer|rights issue"), ("unbundling", r"unbundl"),
            ("merger", r"merger|share swap|amalgamat"),
            ("buyout", r"scheme of arrangement|buyout|take.?over|acquisition|mandatory offer|offer to (?:buy|acquire)|bid for")]
-AMOUNT_RE = re.compile(r"R\s?(\d+(?:[.,]\d+)?)\s*(?:a|per)\s+share|(\d+(?:[.,]\d+)?)\s*(?:cents|c)\s*(?:a|per)\s+share", re.I)
+AMOUNT_RE = re.compile(r"R\s?(\d+(?:[.,]\d+)?)\s*(?:a|per)\s+(?:ordinary\s+)?share|"
+                       r"(\d{1,3}(?:[ ,]\d{3})+|\d+(?:[.,]\d+)?)\s*(?:cents|c)\s*(?:a|per)\s+(?:ordinary\s+)?share", re.I)
+AMOUNT_SEARCH = {"special_distribution": "special dividend cents per share", "buyout": "offer cents per share",
+                 "delisting": "offer cents per share"}
+MAX_AMOUNT_SEARCHES = 5  # extra news searches per rebuild, for deals whose headline has no per-share amount
 PROPERTY_RE = re.compile(r"\breit\b|property|properties|real estate|reit", re.I)
 
 
@@ -40,13 +44,78 @@ def regex_deal(article):
     kind = next((k for k, rx in KIND_RE if re.search(rx, text, re.I)), None)
     if not kind:
         return None
-    m = AMOUNT_RE.search(text)
-    amount = None
-    if m:
-        amount = float((m.group(1) or "").replace(",", ".")) if m.group(1) else float(m.group(2).replace(",", ".")) / 100
+    amount = parse_amount(text)
     company = re.split(r"\s+(?:receives|gets|to|offers?|announces|says|plans|agrees|in|faces|bid|shareholders)\b|[:,–-]",
                        article["title"], maxsplit=1)[0].strip()
     return {"company": company[:80], "kind": kind, "amount": amount, "ldt": None, "property": bool(PROPERTY_RE.search(text))}
+
+
+def parse_amount(text):
+    """Rand per share from 'R29.50 a share' or '2 950 cents per share' / '2,950c per share' (thousands separators in
+    cents are not decimals). None when the text doesn't say."""
+    m = AMOUNT_RE.search(text or "")
+    if not m:
+        return None
+    if m.group(1):
+        return float(m.group(1).replace(",", "."))
+    cents = m.group(2)
+    cents = re.sub(r"[ ,](?=\d{3}\b)", "", cents) if re.search(r"[ ,]\d{3}\b", cents) else cents.replace(",", ".")
+    return round(float(cents) / 100, 4)
+
+
+def find_amount(company, kind):
+    """The per-share amount when the headline only gave a total ('to return R7bn'): one news search for the cents per
+    share, read by the same never-guess rule (the first explicit amount near the company's name)."""
+    if kind not in AMOUNT_SEARCH:
+        return None, None
+    for a in serp_news(f"{company} {AMOUNT_SEARCH[kind]}", 6):
+        text = f"{a['title']} {a['snippet']}"
+        if company.split()[0].lower() in text.lower() and (amount := parse_amount(text)):
+            return amount, a["link"]
+    return None, None
+
+
+def since_news(row, day):
+    """How far the share price has moved since the news came out (0.10 = up 10%), or None."""
+    if not row or row.price is None or not row.history or not day:
+        return None
+    try:
+        then = prices.price_on(row.history, date.fromisoformat(day))
+    except ValueError:
+        return None
+    return round(float(row.price) / then - 1, 4) if then else None
+
+
+def money(x):
+    return ("–" if x < 0 else "") + f"R{abs(x):,.2f}".replace(",", " ")
+
+
+def explain(kind, amount, price, moved=None, day=None):
+    """The working behind the verdict, step by step, for the tap-to-open detail."""
+    steps = []
+    if kind == "special_distribution" and amount and price:
+        after = max(price - amount, 0)
+        net = amount * (1 - DIVIDEND_TAX)
+        fees = price * FEES
+        result = after + net - price - fees
+        steps = [f"The payout is {money(amount)} a share. Buying today costs {money(price)} a share.",
+                 f"After the last day to trade, the share price drops by about the payout: to roughly {money(after)}.",
+                 f"You receive the {money(amount)} payout less {DIVIDEND_TAX:.0%} dividend tax: {money(net)}.",
+                 f"So for {money(price)} paid (plus about {money(fees)} in fees) you end up with about {money(after)} in "
+                 f"shares and {money(net)} in cash: {money(result)} a share ({result / price:+.1%}).",
+                 "If it is paid as a return of capital instead of a dividend there is no 20% dividend tax, but it lowers "
+                 "your base cost, so you pay capital gains tax on it later instead."]
+    elif kind in ("buyout", "delisting") and amount and price:
+        net = amount - price - price * FEES
+        steps = [f"The offer is {money(amount)} a share; it trades at {money(price)}.",
+                 f"If the deal goes through you get {money(amount)}: {money(net)} a share after fees ({net / price:+.1%}).",
+                 "If the deal fails or is delayed, the price usually falls back to where it was before the offer."]
+    if moved is not None and abs(moved) >= 0.02 and steps:
+        when = f" on {day}" if day else ""
+        steps.append(f"The price has moved {moved:+.1%} since the news{when}: "
+                     + ("the market has already priced the payout in, so there is no bargain left."
+                        if moved > 0 else "it has fallen since, so check what the market knows before buying."))
+    return steps
 
 
 def ai_deals(articles):
@@ -151,7 +220,7 @@ def build(db: Session):
     if not found:
         found = {i: d for i, a in enumerate(articles) if (d := regex_deal(a))}
 
-    deals, done = [], set()
+    deals, done, searches = [], set(), 0
     blog_first = lambda kv: (articles[kv[0]]["source"] == "EasyEquities blog", articles[kv[0]]["date"] or "")
     for i, d in sorted(found.items(), key=blog_first, reverse=True):
         key = (d["company"].lower(), d["kind"])
@@ -162,12 +231,19 @@ def build(db: Session):
         symbol = search_symbol(d["company"], "ZAR")
         row = prices.quote(db, symbol) if symbol and symbol.endswith(".JO") else None
         price = float(row.price) if row and row.price is not None else None
+        amount_link = None
+        if not d["amount"] and d["kind"] in AMOUNT_SEARCH and searches < MAX_AMOUNT_SEARCHES:
+            searches += 1
+            d["amount"], amount_link = find_amount(d["company"], d["kind"])
+        moved = since_news(row, a["date"])
         tone, says = verdict(d["kind"], d["amount"], price)
         gap = round(d["amount"] - price, 2) if d["amount"] and price and d["kind"] in ("buyout", "delisting") else None
         deals.append({"company": d["company"], "symbol": symbol if row else None, "kind": d["kind"], "kind_label": KINDS[d["kind"]],
                       "property": d["property"], "amount": d["amount"], "price": price, "gap": gap,
                       "gap_pct": round(gap / price, 4) if gap is not None else None, "tone": tone, "verdict": says,
-                      "ldt": d["ldt"], "title": a["title"], "link": a["link"], "source": a["source"], "date": a["date"]})
+                      "ldt": d["ldt"], "title": a["title"], "link": a["link"], "source": a["source"], "date": a["date"],
+                      "amount_link": amount_link, "since_news": moved,
+                      "detail": explain(d["kind"], d["amount"], price, moved, a["date"])})
     order = {"ok": 0, "warn": 1, "info": 2}
     deals.sort(key=lambda x: (order[x["tone"]], -(len(x["date"] or "") and int((x["date"] or "0").replace("-", "")))))
     return {"built_at": utcnow().isoformat(), "deals": deals[:25],

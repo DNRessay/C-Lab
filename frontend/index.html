@@ -1861,8 +1861,11 @@
         <div class="row" style="justify-content:space-between;gap:0.5rem;flex-wrap:wrap">
           <strong>${esc(x.company)}</strong>
           <span>${badge(x.kind_label)}${x.property ? " " + badge("Property") : ""} ${badge(...DEAL_TONE[x.tone])}</span></div>
-        <small class="muted">${x.symbol ? esc(x.symbol) + " · " : ""}${x.price != null ? `trades at ${money(x.price)}` : "no price"}${x.amount ? ` · deal pays ${money(x.amount)} a share` : ""}${x.ldt ? ` · last day to trade ${day(x.ldt)}` : ""}</small>
-        <p style="margin:0.3rem 0">${esc(x.verdict)}</p>
+        <small class="muted">${x.symbol ? esc(x.symbol) + " · " : ""}${x.price != null ? `trades at ${money(x.price)}` : "no price"}${x.amount ? ` · deal pays ${money(x.amount)} a share` : ""}${x.ldt ? ` · last day to trade ${day(x.ldt)}` : ""}${x.since_news != null ? ` · ${x.since_news >= 0 ? "+" : ""}${(x.since_news * 100).toFixed(1)}% since the news` : ""}</small>
+        ${x.detail && x.detail.length ? `<details class="deal-why"><summary style="cursor:pointer;margin:0.3rem 0">${esc(x.verdict)} <span class="muted">Why?</span></summary>
+          <ol style="margin:0.3rem 0 0.4rem 1.1rem;padding:0">${x.detail.map(s => `<li style="margin:0.15rem 0">${esc(s)}</li>`).join("")}</ol>
+          ${x.amount_link ? `<small class="muted">Payout amount from <a href="${esc(x.amount_link)}" target="_blank" rel="noopener">this article</a>.</small>` : ""}</details>`
+          : `<p style="margin:0.3rem 0">${esc(x.verdict)}</p>`}
         <small><a href="${esc(x.link)}" target="_blank" rel="noopener">${esc(x.title)}</a> · ${esc(x.source)}${x.date ? ` · ${x.date}` : ""}</small></li>`).join("");
       box.innerHTML = `<div class="card"><div class="ai-head"><h3>Company deals: worth buying for?</h3>
         <button class="secondary small deals-refresh">Refresh</button></div>
