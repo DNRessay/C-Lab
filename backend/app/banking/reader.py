@@ -503,6 +503,8 @@ def income_category(t, regular=frozenset()) -> str:
         return "Crypto sales"
     if t.category == "Interest":
         return "Interest"
+    if t.category == "Cash deposit":
+        return "Cash deposits"
     if t.category not in NOT_MONEY_IN or re.search(r"refund|reversal|correction", d, re.I):
         return "Refunds & reversals"  # money in on a shop, airtime or restaurant line is money back
     who = payer(d)
