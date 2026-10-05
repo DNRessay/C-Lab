@@ -88,6 +88,16 @@
       <div class="callout info"><span class="cl-icon" aria-hidden="true">i</span><p><b class="cl-tag">Info</b> Rand pairs show rand per 1 unit of the foreign currency, so a rising number means a weaker rand.</p></div>
     </section>
 
+    <section id="calendar" hidden>
+      <h2>Dividend calendar</h2>
+      <div class="callout suggest"><span class="cl-icon" aria-hidden="true">i</span><p><b class="cl-tag">Heads up</b> <span id="cal-warning"></span></p></div>
+      <div class="grid" id="cal-kpis"></div>
+      <div class="row" style="margin:0.6rem 0"><label class="muted" for="cal-show">Show</label>
+        <select id="cal-show"><option value="all">All companies</option><option value="mine">Holdings and watchlist</option><option value="declared">Declared only</option></select></div>
+      <div class="cal-strip" id="cal-strip"></div>
+      <div id="cal-months"></div>
+    </section>
+
     <!-- Overview -->
     <section id="overview" hidden>
       <div class="grid" id="kpis"></div>
@@ -580,7 +590,7 @@
     import { API_BASE } from "/js/config.js";
     import { $, $$, action, amount, badge, day, download, empty, esc, flash, money, onSubmit, page, pct, setActive } from "/js/ui.js";
 
-    const PAGES = [["markets", "Markets"], ["overview", "Portfolio"], ["holdings", "Holdings"], ["transactions", "Transactions"],
+    const PAGES = [["markets", "Markets"], ["calendar", "Calendar"], ["overview", "Portfolio"], ["holdings", "Holdings"], ["transactions", "Transactions"],
       ["ai", "Ask AI"], ["banking", "Banking"], ["watchlist", "Watchlist"], ["property", "Property"], ["reports", "Reports"],
       ["account", "Account", [["profile", "Profile"], ["easyequities", "EasyEquities"], ["google", "Google"]]]];
     page(PAGES);
@@ -2032,8 +2042,50 @@
         .catch(e => show(fallback, fallback.length ? `Couldn't read this period (${esc(e.message)}); showing your latest AI suggestions.` : esc(e.message)));
     }
 
+    // Dividend calendar: declared dividends plus expected ones guessed from each company's past payouts
+    const CONF = { high: ["paid here 3+ years", "ok"], medium: ["paid here 2 years", ""], low: ["seen once", "warn"] };
+    const CAL_STATUS = { declared: ["declared", "ok"], paid: ["paid", "muted"], expected: ["expected", ""], late: ["not declared yet", "warn"] };
+    let calData = null;
+    function renderCalendar() {
+      const how = $("#cal-show").value;
+      const keep = (x) => how === "mine" ? !!x.mine : how === "declared" ? ["declared", "paid"].includes(x.status) : true;
+      const months = calData.months.map(m => ({ ...m, items: m.items.filter(keep) }));
+      const top = Math.max(1, ...months.map(m => m.items.length));
+      $("#cal-strip").innerHTML = months.map(m => `<a class="cal-cell${m.items.length ? "" : " none"}" href="#calendar" data-m="${m.month}">
+        <span>${esc(m.label.split(" ")[0])}</span><i style="height:${Math.round(m.items.length / top * 100)}%"></i>
+        <small>${m.items.length || ""}</small></a>`).join("");
+      $("#cal-months").innerHTML = months.map((m, i) => `<details class="section" id="cal-${m.month}"${i === 0 || (m.income && i < 3) ? " open" : ""}>
+        <summary><span>${esc(m.label)}${m.income ? ` · <span class="pos">~${money(m.income)}</span> to you` : ""}</span><span class="count">${m.items.length}</span></summary>
+        <div class="card table-wrap"><table>
+          <thead><tr><th>What</th><th class="num">Dividend</th><th>Last day to trade</th><th>Paid</th><th>How sure</th></tr></thead>
+          <tbody>${m.items.map(x => `<tr class="${x.status === "paid" ? "dim" : ""}"><td>${esc(x.instrument)}<br><small class="muted">${x.account ? esc(x.account) + " account" : ""}${x.symbol ? `${x.account ? " · " : ""}${esc(x.symbol)}` : ""}${x.mine ? " · " + MINE[x.mine][0] : ""}</small></td>
+            <td class="num">${x.status === "expected" || x.status === "late" ? "~" : ""}${divAmt(x)}${x.estimate != null ? `<br><small class="muted">${units(x.units)} units → ${money(x.estimate)}</small>` : ""}${x.change != null ? `<br><small class="${x.change < 0 ? "neg" : "pos"}">${x.change >= 0 ? "+" : ""}${(x.change * 100).toFixed(0)}% on last year</small>` : ""}</td>
+            <td>${x.status === "expected" || x.status === "late" ? "~" : ""}${dayOr(x.ldt)}</td><td>${x.pay_date ? (x.status === "expected" || x.status === "late" ? "~" : "") + day(x.pay_date) : "—"}</td>
+            <td>${badge(...CAL_STATUS[x.status])}${x.confidence ? `<br>${badge(...CONF[x.confidence])}` : ""}${x.seen?.length && x.confidence ? `<br><small class="muted">before: ${esc(x.seen.join(", "))}</small>` : ""}</td></tr>`).join("")
+            || empty(5, how === "all" ? "Nothing paid around this month before." : "Nothing here with this filter.")}</tbody></table></div></details>`).join("");
+      $$("#cal-strip .cal-cell").forEach(a => a.addEventListener("click", (e) => {
+        e.preventDefault();
+        const d = $(`#cal-${a.dataset.m}`);
+        d.open = true;
+        d.scrollIntoView({ behavior: "smooth", block: "start" });
+      }));
+    }
+    $("#cal-show").addEventListener("change", () => calData && renderCalendar());
+    async function loadCalendar() {
+      calData = await api.dividendCalendar();
+      $("#cal-warning").textContent = calData.warning;
+      const all = calData.months.flatMap(m => m.items), mine = all.filter(x => x.mine === "hold");
+      const kpi = (label, value, sub = "") => `<div class="card stat"><div class="value">${value}</div><div class="label">${label}${sub ? `<br>${sub}` : ""}</div></div>`;
+      const best = [...calData.months].sort((a, b) => b.income - a.income)[0];
+      $("#cal-kpis").innerHTML = kpi("Expected to you, next 12 months", money(calData.income), mine.length ? `${mine.length} payouts from your holdings` : "no dividends from your holdings found") +
+        kpi("Declared", all.filter(x => ["declared", "paid"].includes(x.status)).length, `${all.length - all.filter(x => ["declared", "paid"].includes(x.status)).length} more expected`) +
+        kpi("Biggest month for you", best?.income ? esc(best.label) : "—", best?.income ? `~${money(best.income)}` : "") +
+        kpi("Companies", calData.companies, "from EasyEquities' updates, your holdings and watchlist");
+      renderCalendar();
+    }
+
     // pages
-    const LOAD = { markets: loadMarkets, overview: loadSummary, easyequities: loadEE, google: loadEE, holdings: loadSummary,
+    const LOAD = { markets: loadMarkets, calendar: loadCalendar, overview: loadSummary, easyequities: loadEE, google: loadEE, holdings: loadSummary,
       transactions: loadTxns, banking: loadBank, watchlist: loadWatch, ai: loadChat, reports: loadReports, property: loadProps, profile: loadAccount };
     const ALIAS = { account: "profile" };
     function show() {

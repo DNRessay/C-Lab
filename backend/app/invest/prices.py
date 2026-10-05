@@ -8,7 +8,7 @@ import requests
 from sqlalchemy.orm import Session
 
 from ..models import utcnow
-from .models import PriceCache
+from .models import DividendHistory, PriceCache
 
 log = logging.getLogger(__name__)
 
@@ -56,10 +56,12 @@ def fetch(symbol: str) -> dict:
     price = Decimal(str(price)) * scale if price is not None else (Decimal(str(history[-1][1])) if history else None)
 
     year_ago = datetime.now(timezone.utc).timestamp() - 365 * 86400
-    divs = sum(Decimal(str(d.get("amount", 0))) for d in ((res.get("events") or {}).get("dividends") or {}).values()
-               if d.get("date", 0) >= year_ago) * scale
+    events = ((res.get("events") or {}).get("dividends") or {}).values()
+    divs = sum(Decimal(str(d.get("amount", 0))) for d in events if d.get("date", 0) >= year_ago) * scale
+    paid = sorted([datetime.fromtimestamp(d["date"], tz=timezone.utc).date().isoformat(), float(Decimal(str(d["amount"])) * scale)]
+                  for d in events if d.get("date") and d.get("amount"))
     return {"name": meta.get("longName") or meta.get("shortName") or symbol, "currency": currency,
-            "price": price, "history": history, "dividends_12m": divs}
+            "price": price, "history": history, "dividends_12m": divs, "dividends": paid}
 
 
 def quote(db: Session, symbol: str, force=False):
@@ -82,6 +84,10 @@ def quote(db: Session, symbol: str, force=False):
     row.name, row.currency, row.price = data["name"][:200], data["currency"], data["price"]
     row.history, row.dividends_12m, row.error, row.fetched_at = data["history"], data["dividends_12m"], "", utcnow()
     db.add(row)
+    if "dividends" in data:
+        divs = db.get(DividendHistory, symbol) or DividendHistory(symbol=symbol)
+        divs.events, divs.fetched_at = data["dividends"], utcnow()
+        db.add(divs)
     db.commit()
     return row
 
