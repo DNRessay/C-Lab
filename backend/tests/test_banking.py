@@ -191,3 +191,13 @@ def test_internal_transfers_are_not_income_or_spending():
             T(id=5, account="Capitec ••3", date=date(2026, 9, 20), amount=500.0)]   # too late for id 3
     assert internal_pairs(txns) == {1, 2}
     assert INVEST_RE.search("Payment to EasyEquities ref EE123") and not INVEST_RE.search("Checkers")
+
+
+def test_atm_withdrawals_at_garages_and_shops_are_cash():
+    from app.banking.categorize import categorise
+
+    assert categorise("ATM Withdrawal at ENGEN WINTERVD DDU MABOPANE ZA 619014174187", -600) == "Cash"
+    assert categorise("ATM Withdrawal at Boxer Spr Mabopane", -200) == "Cash"
+    assert categorise("ATM Withdrawal at 21 Molete Makinta Road Mabopane", -400) == "Cash"
+    assert categorise("ATM Withdrawal Fee", -10) == "Bank fees"
+    assert categorise("Purchase at ENGEN WINTERVELD", -500) == "Transport"  # fuel is still transport
