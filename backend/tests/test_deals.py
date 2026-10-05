@@ -41,3 +41,23 @@ def test_blog_posts_about_deals_come_first(monkeypatch):
     assert [d["company"] for d in out["deals"]] == ["Acme Ltd"]
     assert out["deals"][0]["amount"] == 12.0 and out["deals"][0]["source"] == "EasyEquities blog"
     db.close()
+
+
+def test_payout_amounts_and_the_working_behind_a_special_dividend(monkeypatch):
+    from app.invest import deals
+
+    assert deals.parse_amount("Datatec declares a special dividend of 2 950 cents per share") == 29.5
+    assert deals.parse_amount("a 2,950c per share payout") == 29.5
+    assert deals.parse_amount("R29.50 per ordinary share") == 29.5
+    assert deals.parse_amount("Datatec to return R7bn to shareholders") is None
+
+    monkeypatch.setattr(deals, "serp_news", lambda q, n=8: [
+        {"title": "Unrelated Co pays 100 cents per share", "snippet": "", "link": "x"},
+        {"title": "Datatec special dividend set at 2 950 cents per share", "snippet": "", "link": "https://news/dtc"}])
+    assert deals.find_amount("Datatec", "special_distribution") == (29.5, "https://news/dtc")
+    assert deals.find_amount("Datatec", "rights_offer") == (None, None)
+
+    steps = deals.explain("special_distribution", 29.5, 83.74, 0.10, "2026-08-24")
+    assert "R54.24" in steps[1] and "R23.60" in steps[2] and "–R6.74" in steps[3] and "-8.0%" in steps[3]
+    assert "+10.0% since the news on 2026-08-24" in steps[-1] and "priced the payout in" in steps[-1]
+    assert deals.explain("rights_offer", None, 2.0) == []
